@@ -1,0 +1,33 @@
+# nginx site for the AFK panel — serve it as an HTTPS subdomain via your existing nginx.
+#
+# 1. Replace afk.example.com below with your real subdomain.
+# 2. Save as /etc/nginx/sites-available/afk and enable it:
+#      sudo ln -s /etc/nginx/sites-available/afk /etc/nginx/sites-enabled/afk
+#      sudo nginx -t && sudo systemctl reload nginx
+# 3. Get HTTPS (certbot rewrites this file to add the 443 block + cert):
+#      sudo certbot --nginx -d afk.example.com
+#
+# The panel must be running on 127.0.0.1:3100 (PORT=3100, HOST=127.0.0.1 in .env).
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name afk.example.com;          # <-- CHANGE THIS
+
+    location / {
+        proxy_pass http://127.0.0.1:3100;
+
+        # WebSocket support (the panel streams bot output over a live WS).
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Pass through the real host/client so cookies + secure detection work.
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 86400;         # keep the WebSocket open (24h)
+    }
+}
