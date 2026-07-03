@@ -13,6 +13,9 @@ import Hub from './ws/hub.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
+// Interface to bind. Default 0.0.0.0 (all) for local dev; set HOST=127.0.0.1 on a shared
+// VPS so the panel is only reachable over an SSH tunnel, never on the public IP.
+const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
@@ -56,6 +59,6 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`MC AFK console client listening on http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`MC AFK console client listening on ${HOST}:${PORT}`);
 });
