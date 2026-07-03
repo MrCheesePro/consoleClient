@@ -1,0 +1,26 @@
+{
+  "name": "mc-afk-console-client",
+  "version": "1.0.0",
+  "description": "Multi-user web-hosted Minecraft AFK console client (mineflayer)",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie": "^0.6.0",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "mineflayer": "^4.20.1",
+    "prismarine-auth": "^2.5.0",
+    "socks": "^2.8.9",
+    "ws": "^8.18.0"
+  }
+}

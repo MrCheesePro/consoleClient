@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AFK Console Client</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ===== Auth gate ===== -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <h1 class="auth-title">AFK Console Client</h1>
+      <p class="auth-sub">Enter the password to unlock the panel.</p>
+      <p id="auth-error" class="auth-error"></p>
+      <label class="field-label">Password</label>
+      <input id="auth-password" type="password" class="text-input" autocomplete="current-password" />
+      <div class="auth-actions">
+        <button id="auth-submit" class="btn btn-green">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Main app ===== -->
+  <div id="app" class="app hidden">
+    <!-- Column 1: Accounts -->
+    <section class="panel">
+      <h2 class="panel-title">Accounts</h2>
+
+      <div class="account-form">
+        <div class="account-inputs">
+          <div class="input-group">
+            <label id="acc-label1" class="field-label">Username</label>
+            <input id="acc-input1" class="text-input" placeholder="" />
+          </div>
+          <button id="add-account" class="icon-btn" title="Add account">＋</button>
+        </div>
+        <p id="acc-hint" class="acc-hint"></p>
+      </div>
+
+      <div class="account-list-head">
+        <span id="account-count" class="account-count">0 accounts</span>
+        <label class="select-all"><input type="checkbox" id="select-all" /> Select all</label>
+      </div>
+      <div id="account-list" class="account-list"></div>
+
+      <div class="account-footer">
+        <button id="connect-btn" class="btn btn-green">Connect</button>
+        <button id="disconnect-btn" class="btn btn-red">Disconnect</button>
+        <span id="online-count" class="online-count">Online: 0/0</span>
+      </div>
+
+      <div class="panel-foot-note">Multi-account AFK client · v1.0</div>
+    </section>
+
+    <!-- Column 2: Settings -->
+    <section class="panel">
+      <h2 class="panel-title">Settings</h2>
+      <div class="settings-grid">
+        <label class="settings-label">Server IP</label>
+        <input id="set-server_ip" class="text-input" placeholder="play.server.com" data-setting="server_ip" />
+
+        <label class="settings-label">Login message</label>
+        <input id="set-login_message" class="text-input" placeholder="/server factions" data-setting="login_message" />
+
+        <label class="settings-label">World change message</label>
+        <input id="set-world_change_message" class="text-input" placeholder="/home afk" data-setting="world_change_message" />
+
+        <label class="settings-label">Login delay (ms)</label>
+        <input id="set-login_delay_ms" class="text-input" type="number" placeholder="4000" data-setting="login_delay_ms" />
+
+        <label class="settings-label">Server version</label>
+        <input id="set-server_version" class="text-input" placeholder="1.8.9" data-setting="server_version" />
+
+        <label class="settings-label">Show chat in console</label>
+        <button class="toggle" data-setting="show_chat" aria-pressed="false"></button>
+
+        <label class="settings-label">Auto reconnect</label>
+        <button class="toggle" data-setting="auto_reconnect" aria-pressed="false"></button>
+
+        <label class="settings-label">Sneak</label>
+        <button class="toggle" data-setting="sneak" aria-pressed="false"></button>
+
+        <label class="settings-label">Anti AFK</label>
+        <button class="toggle" data-setting="anti_afk" aria-pressed="false"></button>
+
+        <label class="settings-label">Offline/cracked accounts</label>
+        <button class="toggle" data-setting="offline_mode" aria-pressed="false"></button>
+
+        <label class="settings-label">Drop all items</label>
+        <button id="drop-btn" class="btn btn-pill">Drop</button>
+
+        <label class="settings-label">Equip armor</label>
+        <button id="equip-btn" class="btn btn-pill">Equip</button>
+
+        <label class="settings-label">Use held item</label>
+        <button id="use-btn" class="btn btn-pill">Use</button>
+      </div>
+
+      <label class="settings-label proxy-label">Proxy pool — one per line, 3 accounts per IP</label>
+      <textarea class="text-input proxy-pool" rows="3" spellcheck="false"
+        data-setting="proxy_pool"
+        placeholder="direct&#10;socks5://user:pass@1.2.3.4:1080&#10;socks5://user:pass@1.2.3.5:1080"></textarea>
+      <p class="proxy-hint">Accounts fill each entry in order, 3 per IP. "direct" = this machine's IP. Leave blank to disable.</p>
+    </section>
+
+    <!-- Column 3: Console -->
+    <section class="panel">
+      <div class="console-head">
+        <h2 class="panel-title">Console</h2>
+        <div class="console-target">
+          <label class="field-label">Select account</label>
+          <select id="console-target" class="select-input">
+            <option value="all">All accounts</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="console-output" class="console-output"></div>
+
+      <div class="console-input-row">
+        <input id="chat-input" class="text-input" placeholder="Hello world" />
+        <button id="send-btn" class="btn btn-pill">Send</button>
+      </div>
+      <div class="console-input-row">
+        <input id="spam-message" class="text-input" placeholder="Spam message" data-setting="spam_message" />
+        <input id="spam-delay" class="text-input" type="number" placeholder="Spam delay (ms)" data-setting="spam_delay_ms" />
+        <button class="toggle" data-setting="spam_enabled" aria-pressed="false" title="Spam on/off"></button>
+        <button id="clear-console" class="btn btn-pill">Clear console</button>
+      </div>
+
+      <div class="panel-foot-note right">
+        <span id="user-email"></span>
+        <button id="logout-btn" class="link-btn">Log out</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== Microsoft device-code modal ===== -->
+  <div id="msa-modal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Sign in with Microsoft</h3>
+      <p>Open the link below and enter this code to authorize the account:</p>
+      <div class="msa-code" id="msa-code">------</div>
+      <a id="msa-link" class="msa-link" href="#" target="_blank" rel="noopener">microsoft.com/link</a>
+      <button id="msa-close" class="btn btn-ghost">Close</button>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
