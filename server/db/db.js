@@ -1,10 +1,15 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'app.db');
+
+// better-sqlite3 won't create the parent dir, and data/ is gitignored (so absent on a
+// fresh clone) — create it up front so first boot works without a manual mkdir.
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
