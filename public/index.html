@@ -50,6 +50,15 @@
         <span id="online-count" class="online-count">Online: 0/0</span>
       </div>
 
+      <div class="leaderboard">
+        <div class="leaderboard-head">
+          <span class="leaderboard-title">Top Factions</span>
+          <button id="lb-refresh" class="link-btn">Refresh now</button>
+        </div>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
+        <div id="leaderboard-updated" class="leaderboard-updated"></div>
+      </div>
+
       <div class="panel-foot-note">Multi-account AFK client · v1.0</div>
     </section>
 
@@ -86,6 +95,15 @@
 
         <label class="settings-label">Offline/cracked accounts</label>
         <button class="toggle" data-setting="offline_mode" aria-pressed="false"></button>
+
+        <label class="settings-label">Leaderboard (hourly)</label>
+        <button class="toggle" data-setting="leaderboard_enabled" aria-pressed="false"></button>
+
+        <label class="settings-label">Leaderboard command</label>
+        <input class="text-input" placeholder="/f top" data-setting="leaderboard_command" />
+
+        <label class="settings-label">Leaderboard account</label>
+        <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
 
         <label class="settings-label">Drop all items</label>
         <button id="drop-btn" class="btn btn-pill">Drop</button>

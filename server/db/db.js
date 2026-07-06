@@ -49,7 +49,16 @@ db.exec(`
     spam_message        TEXT    NOT NULL DEFAULT '',
     spam_delay_ms       INTEGER NOT NULL DEFAULT 5000,
     spam_enabled        INTEGER NOT NULL DEFAULT 0,
-    proxy_pool          TEXT    NOT NULL DEFAULT ''
+    proxy_pool          TEXT    NOT NULL DEFAULT '',
+    leaderboard_enabled INTEGER NOT NULL DEFAULT 0,
+    leaderboard_command TEXT    NOT NULL DEFAULT '/f top',
+    leaderboard_account TEXT    NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS leaderboard (
+    user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    updated_at INTEGER NOT NULL,
+    entries    TEXT    NOT NULL DEFAULT '[]'
   );
 `);
 
@@ -59,6 +68,9 @@ db.exec(`
   const cols = new Set(db.prepare(`PRAGMA table_info(settings)`).all().map((c) => c.name));
   const addColumn = (name, ddl) => { if (!cols.has(name)) db.exec(`ALTER TABLE settings ADD COLUMN ${ddl}`); };
   addColumn('proxy_pool', `proxy_pool TEXT NOT NULL DEFAULT ''`);
+  addColumn('leaderboard_enabled', `leaderboard_enabled INTEGER NOT NULL DEFAULT 0`);
+  addColumn('leaderboard_command', `leaderboard_command TEXT NOT NULL DEFAULT '/f top'`);
+  addColumn('leaderboard_account', `leaderboard_account TEXT NOT NULL DEFAULT ''`);
 }
 
 const now = () => Date.now();
@@ -119,6 +131,7 @@ const SETTINGS_FIELDS = [
   'server_ip', 'login_message', 'world_change_message', 'login_delay_ms',
   'server_version', 'show_chat', 'auto_reconnect', 'sneak', 'anti_afk',
   'offline_mode', 'spam_message', 'spam_delay_ms', 'spam_enabled', 'proxy_pool',
+  'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
 ];
 
 export function updateSettings(userId, patch) {
@@ -130,5 +143,12 @@ export function updateSettings(userId, patch) {
   db.prepare(`UPDATE settings SET ${assignments} WHERE user_id = @user_id`).run(values);
   return getSettings.get(userId);
 }
+
+// ---- Leaderboard (latest parsed `/f top` snapshot per user) ----
+export const getLeaderboard = db.prepare(`SELECT * FROM leaderboard WHERE user_id = ?`);
+export const upsertLeaderboard = db.prepare(`
+  INSERT INTO leaderboard (user_id, updated_at, entries) VALUES (@user_id, @updated_at, @entries)
+  ON CONFLICT(user_id) DO UPDATE SET updated_at = @updated_at, entries = @entries
+`);
 
 export default db;

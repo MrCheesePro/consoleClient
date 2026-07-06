@@ -3,6 +3,7 @@ let settings = {};
 let accounts = [];
 const statuses = {};      // accountId -> 'online' | 'connecting' | 'offline'
 let selectedAccountId = 'all';  // console/inventory target, shared with the Accounts list
+let leaderboard = { entries: [], updatedAt: 0 };
 let ws = null;
 
 const $ = (id) => document.getElementById(id);
@@ -38,6 +39,7 @@ async function showApp() {
   accounts = await api('/api/accounts');
   renderSettings();
   renderAccounts();
+  renderLeaderboard();
   updateAccountForm();
   connectWs();
 }
@@ -93,6 +95,10 @@ function handleWs(msg) {
     case 'msaCode':
       showMsaModal(msg.code);
       break;
+    case 'leaderboard':
+      leaderboard = { entries: msg.entries || [], updatedAt: msg.updatedAt || Date.now() };
+      renderLeaderboard();
+      break;
     case 'error':
       appendConsole({ text: msg.message, error: true });
       break;
@@ -147,13 +153,24 @@ function renderAccounts() {
     status.className = 'account-status ' + info.cls;
     status.textContent = info.text;
 
+    // Per-account connect/disconnect (footer buttons still act on all).
+    const live = statuses[acc.id] === 'online' || statuses[acc.id] === 'connecting';
+    const power = document.createElement('button');
+    power.className = 'account-power' + (live ? ' on' : '');
+    power.textContent = live ? '⏻' : '▶';
+    power.title = live ? 'Disconnect this account' : 'Connect this account';
+    power.onclick = (e) => {
+      e.stopPropagation();
+      wsSend({ type: live ? 'disconnect' : 'connect', accountIds: [acc.id] });
+    };
+
     const del = document.createElement('button');
     del.className = 'account-del';
     del.textContent = '×';
     del.title = 'Remove account';
     del.onclick = (e) => { e.stopPropagation(); deleteAccount(acc); };
 
-    row.append(dot, name, tag, status, del);
+    row.append(dot, name, tag, status, power, del);
     list.appendChild(row);
   }
 
@@ -165,6 +182,7 @@ function renderAccounts() {
   cb.indeterminate = enabledCount > 0 && enabledCount < accounts.length;
 
   renderConsoleTargets();
+  renderLeaderboardAccountOptions();
 }
 
 // Focus an account (or 'all') across the Accounts list + Console dropdown.
@@ -267,11 +285,10 @@ function saveSettings(patch) {
   }, 250);
 }
 
-document.querySelectorAll('input[data-setting], textarea[data-setting]').forEach((el) => {
-  el.addEventListener('input', () => {
-    const key = el.dataset.setting;
-    saveSettings({ [key]: el.value });
-  });
+document.querySelectorAll('input[data-setting], textarea[data-setting], select[data-setting]').forEach((el) => {
+  const save = () => saveSettings({ [el.dataset.setting]: el.value });
+  el.addEventListener('input', save);
+  el.addEventListener('change', save); // covers <select>
 });
 
 document.querySelectorAll('.toggle[data-setting]').forEach((el) => {
@@ -288,6 +305,76 @@ document.querySelectorAll('.toggle[data-setting]').forEach((el) => {
 $('drop-btn').onclick = () => wsSend({ type: 'dropAll', accountId: currentTarget() });
 $('equip-btn').onclick = () => wsSend({ type: 'equipArmor', accountId: currentTarget() });
 $('use-btn').onclick = () => wsSend({ type: 'useItem', accountId: currentTarget() });
+
+// ===== Leaderboard =====
+$('lb-refresh').onclick = () => wsSend({ type: 'refreshLeaderboard' });
+
+// Populate the "which account runs /f top" dropdown from the accounts list.
+function renderLeaderboardAccountOptions() {
+  const sel = $('set-leaderboard_account');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Auto (first online)</option>';
+  for (const acc of accounts) {
+    const opt = document.createElement('option');
+    opt.value = acc.id;
+    opt.textContent = acc.label || acc.username;
+    sel.appendChild(opt);
+  }
+  sel.value = settings.leaderboard_account || '';
+}
+
+function formatAgo(ts) {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
+function renderLeaderboard() {
+  const list = $('leaderboard-list');
+  list.innerHTML = '';
+  if (!leaderboard.entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leaderboard-empty';
+    empty.textContent = settings.leaderboard_enabled
+      ? 'No data yet — connect a bot and Refresh.'
+      : 'Off — enable it in Settings.';
+    list.appendChild(empty);
+  } else {
+    for (const e of leaderboard.entries) {
+      const row = document.createElement('div');
+      row.className = 'leaderboard-row';
+
+      const rank = document.createElement('span');
+      rank.className = 'leaderboard-rank';
+      rank.textContent = `${e.rank}.`;
+
+      const name = document.createElement('span');
+      name.className = 'leaderboard-name';
+      name.textContent = e.name;
+
+      const points = document.createElement('span');
+      points.className = 'leaderboard-points';
+      points.textContent = Number(e.points).toLocaleString();
+
+      row.append(rank, name, points);
+      if (e.gain != null && e.gain !== 0) {
+        const gain = document.createElement('span');
+        gain.className = 'leaderboard-gain';
+        gain.textContent = `${e.gain > 0 ? '+' : ''}${Number(e.gain).toLocaleString()}`;
+        row.append(gain);
+      }
+      list.appendChild(row);
+    }
+  }
+  $('leaderboard-updated').textContent = leaderboard.updatedAt ? `updated ${formatAgo(leaderboard.updatedAt)}` : '';
+}
+
+// Keep the "updated Xm ago" text fresh without a re-fetch.
+setInterval(() => {
+  if (leaderboard.updatedAt) $('leaderboard-updated').textContent = `updated ${formatAgo(leaderboard.updatedAt)}`;
+}, 60 * 1000);
 
 // ===== Console =====
 function currentTarget() { return selectedAccountId; }

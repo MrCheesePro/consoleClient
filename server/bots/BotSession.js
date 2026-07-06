@@ -74,6 +74,30 @@ export default class BotSession {
     }
   }
 
+  // Collect every incoming chat line for `windowMs`, then resolve with them. Used to grab a
+  // command's reply (e.g. the /f top leaderboard) without disturbing the normal chat handler.
+  captureChat(windowMs = 4000) {
+    return new Promise((resolve) => {
+      if (!this.bot || this.status !== 'online') { resolve([]); return; }
+      const bot = this.bot;
+      const lines = [];
+      const handler = (msg) => lines.push(String(msg));
+      bot.on('messagestr', handler);
+      setTimeout(() => {
+        try { bot.removeListener('messagestr', handler); } catch { /* ignore */ }
+        resolve(lines);
+      }, windowMs);
+    });
+  }
+
+  // Send a command and return the chat lines that arrive within the window.
+  async runCommandCapture(command, windowMs = 4000) {
+    if (!this.bot || this.status !== 'online') return [];
+    const capture = this.captureChat(windowMs); // start listening before sending
+    this.sendChat(command);
+    return capture;
+  }
+
   dropAll() {
     if (!this.bot || this.status !== 'online') return;
     this._runInventory(async () => {

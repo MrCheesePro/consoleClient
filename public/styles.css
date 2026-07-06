@@ -183,9 +183,26 @@ body {
 .account-tag { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; }
 .account-del { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; }
 .account-del:hover { color: var(--red); }
+.account-power { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 0 2px; }
+.account-power:hover { color: var(--green); }
+.account-power.on { color: var(--green); }
+.account-power.on:hover { color: var(--red); }
 
 .account-footer { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
 .online-count { color: var(--text-dim); font-size: 14px; margin-left: auto; }
+
+/* ---------- Leaderboard (under Accounts) ---------- */
+.leaderboard { margin-top: 18px; display: flex; flex-direction: column; min-height: 0; }
+.leaderboard-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.leaderboard-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-dim); }
+.leaderboard-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 6px; }
+.leaderboard-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; font-size: 13px; }
+.leaderboard-rank { color: var(--text-dim); width: 24px; text-align: right; flex: 0 0 auto; }
+.leaderboard-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-points { font-variant-numeric: tabular-nums; }
+.leaderboard-gain { color: var(--green); font-size: 11px; flex: 0 0 auto; }
+.leaderboard-updated { color: var(--text-dim); font-size: 11px; margin-top: 6px; }
+.leaderboard-empty { color: #4a4a50; font-size: 12px; text-align: center; padding: 16px 8px; }
 
 .panel-foot-note { margin-top: 20px; color: var(--text-dim); font-size: 13px; }
 .panel-foot-note.right { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: auto; padding-top: 20px; }
@@ -198,7 +215,7 @@ body {
   row-gap: 16px;
   column-gap: 20px;
 }
-.settings-grid .text-input, .settings-grid .btn-pill { justify-self: stretch; width: 100%; }
+.settings-grid .text-input, .settings-grid .btn-pill, .settings-grid .select-input { justify-self: stretch; width: 100%; }
 .proxy-label { display: block; margin-top: 20px; margin-bottom: 8px; }
 .proxy-pool {
   width: 100%;

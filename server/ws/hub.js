@@ -33,6 +33,9 @@ export default class Hub {
 
       // Send current bot status so a (re)connecting client is in sync.
       ws.send(JSON.stringify({ type: 'statusSnapshot', statuses: this.botManager.statusSnapshot(userId) }));
+      // And the latest stored leaderboard, if any.
+      const lb = this.botManager.leaderboardSnapshot(userId);
+      if (lb) ws.send(JSON.stringify({ type: 'leaderboard', entries: lb.entries, updatedAt: lb.updatedAt }));
 
       ws.on('message', (raw) => this._onMessage(userId, raw));
       ws.on('close', () => {
@@ -54,6 +57,7 @@ export default class Hub {
       case 'dropAll': bm.dropAll(userId, target); break;
       case 'equipArmor': bm.equipArmor(userId, target); break;
       case 'useItem': bm.useItem(userId, target); break;
+      case 'refreshLeaderboard': bm.refreshLeaderboard(userId); break;
       default: break;
     }
   }

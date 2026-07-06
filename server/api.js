@@ -8,6 +8,7 @@ import { authenticateMicrosoft } from './auth/mcAuth.js';
 
 const BOOL_KEYS = new Set([
   'show_chat', 'auto_reconnect', 'sneak', 'anti_afk', 'offline_mode', 'spam_enabled',
+  'leaderboard_enabled',
 ]);
 const INT_KEYS = new Set(['login_delay_ms', 'spam_delay_ms']);
 
