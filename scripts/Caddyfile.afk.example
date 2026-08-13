@@ -1,0 +1,45 @@
+# Caddy site block for the AFK panel at afk.joshuyk.com
+#
+# Append this to /etc/caddy/Caddyfile, below whatever block already serves your
+# other website. Caddy routes by the site address, so the existing site is
+# unaffected: it keeps its own domain, its own certificate, and the same ports.
+#
+#   sudo nano /etc/caddy/Caddyfile        # paste this block at the bottom
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Caddy obtains and renews the TLS certificate automatically the first time a
+# request arrives for this hostname -- there is no certbot step. DNS must already
+# point afk.joshuyk.com at this server, and ports 80 and 443 must be reachable,
+# or the certificate cannot be issued.
+#
+# The panel itself listens on 127.0.0.1:3100 (PORT=3100, HOST=127.0.0.1 in .env),
+# so it is never exposed on the public IP -- only Caddy can reach it.
+
+afk.joshuyk.com {
+	# Optional second password in front of the panel. Generate the hash with:
+	#     caddy hash-password
+	# then uncomment these three lines and paste the hash after the username.
+	# On Caddy older than 2.8 the directive is spelled `basicauth`, not `basic_auth`.
+	#
+	# basic_auth {
+	# 	youruser <paste-the-hash-here>
+	# }
+
+	# Caddy detects and proxies WebSocket upgrades on its own -- the console
+	# stream needs no extra directives -- and sets X-Forwarded-Proto, which the
+	# panel relies on for secure-cookie detection behind the proxy.
+	reverse_proxy 127.0.0.1:3100 {
+		# Bot consoles hold an idle WebSocket open for a long time.
+		transport http {
+			read_timeout 24h
+			write_timeout 24h
+		}
+	}
+
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/afk.joshuyk.com.log
+	}
+}

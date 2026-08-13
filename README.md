@@ -38,6 +38,13 @@ Environment variables:
 | `MAX_BOTS_PER_USER` | `20` | concurrent-bot cap |
 | `NODE_ENV` | — | `production` enables secure cookies |
 
+## Hosting it publicly
+
+See [DEPLOY.md](DEPLOY.md) for a full walkthrough of putting the panel on a VPS behind
+a subdomain, alongside a website that is already running there. Ready-made reverse-proxy
+configs live in `scripts/` — `Caddyfile.afk.example` for Caddy, `nginx-afk.conf.example`
+for nginx.
+
 ## Testing against a real server
 
 Spin up a local Minecraft server with `online-mode=false`, then in the UI:
