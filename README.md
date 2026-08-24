@@ -18,6 +18,44 @@ A web-hosted control panel for running Minecraft AFK bots (built on
   sneak, configurable chat spam, auto-reconnect, show-chat-in-console.
 - **Inventory buttons** — drop all items, equip armor, use held item.
 - **Live console** — per-account or all-accounts chat stream over WebSocket, send chat.
+- **Wall bot** — one designated account runs wall-check reminders for a factions base,
+  watches chat for check triggers, tracks a per-player leaderboard, and can raise a repeating
+  raid alert. See below.
+
+## Wall bot
+
+Pick one loaded account as the wall bot (Settings → *Wall bot account*, or leave it on Auto to
+use the first online bot). It watches that account's chat and reacts to trigger words.
+
+**Triggers** are configured as a comma-separated list (`check, checked, walls, wall`) matched on
+whole-word boundaries, so `checkers` won't fire `check`. If you need something more precise, wrap
+a regex in slashes instead: `/^\s*wall\w*\b/`. The same applies to the raid on/off triggers.
+
+**Reminders** fire when nobody has checked for longer than the reminder interval. Each one is
+routed by two independent toggles: *Send to Minecraft* (prefixed with your chat prefix, e.g.
+`/f c `) and *Send to Discord* (a plain webhook URL — no bot, no `discord.py`). Everything is
+mirrored to the panel console either way. Quiet hours (`HH:MM`, server local time) pause
+reminders; leave either bound blank to disable them.
+
+**Verification** is on by default, so only authorized names can log a check or start a raid.
+Two ways onto the roster:
+
+- **In game** — a player says `verify`, the bot privately messages them a 6-digit code, and they
+  reply `verify <code>` within 10 minutes. Because the code only arrives as a private message to
+  that account, a spoofed chat line can't claim someone else's name.
+- **From the panel** — type a username into *Authorized Players*; it lands pre-verified.
+
+Turn *Require verification* off to count anyone who types a trigger.
+
+**Stats** persist in SQLite. **Export JSON** downloads the current totals and roster at any time.
+**Reset stats** writes a timestamped backup to `data/wall-backups/` *before* wiping, and aborts
+without touching the database if that backup can't be written. A reset clears scores only — the
+authorized-player roster and your settings survive it, since a map reset shouldn't make everyone
+verify again.
+
+Outbound chat is spaced at least 1.5s apart, the reminder interval has a 30s floor, and the raid
+repeat has a 3s floor. Auto-sending faction chat on a timer is what anti-spam systems mute for —
+test on your own server first.
 
 ## Run
 
@@ -55,7 +93,8 @@ enable **Offline/cracked accounts**, add a username, set the Server IP, and clic
 - `server/index.js` — Express + session + WebSocket upgrade wiring.
 - `server/auth/` — `siteAuth.js` (site login, bcrypt) · `mcAuth.js` (MS device-code).
 - `server/bots/` — `BotManager.js` (lifecycle, per-user cap, event fan-out) ·
-  `BotSession.js` (one mineflayer bot + AFK behaviors).
+  `BotSession.js` (one mineflayer bot + AFK behaviors) · `WallBot.js` (wall checks,
+  verification, raid alerts).
 - `server/ws/hub.js` — per-user WebSocket routing.
 - `server/api.js` — accounts + settings REST.
 - `server/db/db.js` — SQLite schema + queries.

@@ -4,6 +4,10 @@ let accounts = [];
 const statuses = {};      // accountId -> 'online' | 'connecting' | 'offline'
 let selectedAccountId = 'all';  // console/inventory target, shared with the Accounts list
 let leaderboard = { entries: [], updatedAt: 0 };
+let wall = {
+  active: false, raidActive: false, lastCheckAt: 0, totalChecks: 0,
+  top: [], roster: [], accountOnline: false,
+};
 let ws = null;
 
 const $ = (id) => document.getElementById(id);
@@ -40,6 +44,7 @@ async function showApp() {
   renderSettings();
   renderAccounts();
   renderLeaderboard();
+  renderWallBot();
   updateAccountForm();
   connectWs();
 }
@@ -98,6 +103,18 @@ function handleWs(msg) {
     case 'leaderboard':
       leaderboard = { entries: msg.entries || [], updatedAt: msg.updatedAt || Date.now() };
       renderLeaderboard();
+      break;
+    case 'wallState':
+      wall = {
+        active: !!msg.active,
+        raidActive: !!msg.raidActive,
+        lastCheckAt: msg.lastCheckAt || 0,
+        totalChecks: msg.totalChecks || 0,
+        top: msg.top || [],
+        roster: msg.roster || [],
+        accountOnline: !!msg.accountOnline,
+      };
+      renderWallBot();
       break;
     case 'error':
       appendConsole({ text: msg.message, error: true });
@@ -309,9 +326,8 @@ $('use-btn').onclick = () => wsSend({ type: 'useItem', accountId: currentTarget(
 // ===== Leaderboard =====
 $('lb-refresh').onclick = () => wsSend({ type: 'refreshLeaderboard' });
 
-// Populate the "which account runs /f top" dropdown from the accounts list.
-function renderLeaderboardAccountOptions() {
-  const sel = $('set-leaderboard_account');
+// Populate a "which account does this job" dropdown from the accounts list.
+function fillAccountSelect(sel, value) {
   if (!sel) return;
   sel.innerHTML = '<option value="">Auto (first online)</option>';
   for (const acc of accounts) {
@@ -320,7 +336,12 @@ function renderLeaderboardAccountOptions() {
     opt.textContent = acc.label || acc.username;
     sel.appendChild(opt);
   }
-  sel.value = settings.leaderboard_account || '';
+  sel.value = value || '';
+}
+
+function renderLeaderboardAccountOptions() {
+  fillAccountSelect($('set-leaderboard_account'), settings.leaderboard_account);
+  fillAccountSelect($('set-wall_account'), settings.wall_account);
 }
 
 function formatAgo(ts) {
@@ -374,7 +395,143 @@ function renderLeaderboard() {
 // Keep the "updated Xm ago" text fresh without a re-fetch.
 setInterval(() => {
   if (leaderboard.updatedAt) $('leaderboard-updated').textContent = `updated ${formatAgo(leaderboard.updatedAt)}`;
+  renderWallSummary();
 }, 60 * 1000);
+
+// ===== Wall bot =====
+$('wall-start').onclick = () => wsSend({ type: 'wallStart' });
+$('wall-end').onclick = () => wsSend({ type: 'wallEnd' });
+$('wall-check').onclick = () => wsSend({ type: 'wallCheck', player: 'panel' });
+$('raid-start').onclick = () => wsSend({ type: 'raidStart' });
+$('raid-stop').onclick = () => wsSend({ type: 'raidStop' });
+
+// The browser sandbox won't let us fetch-and-save, so hand the URL to the browser directly.
+$('wall-export').onclick = () => { location.href = '/api/wall/export'; };
+
+// Reset is destructive, so it takes two clicks. No window.confirm — a native modal blocks the
+// whole page, which is the last thing you want when driving the panel remotely.
+$('wall-reset').onclick = () => $('wall-reset-confirm').classList.remove('hidden');
+$('wall-reset-no').onclick = () => $('wall-reset-confirm').classList.add('hidden');
+$('wall-reset-yes').onclick = async () => {
+  $('wall-reset-confirm').classList.add('hidden');
+  const note = $('wall-reset-result');
+  try {
+    const out = await api('/api/wall/reset', { method: 'POST' });
+    note.innerHTML = '';
+    note.append(document.createTextNode(`Reset. Backup of ${out.totalChecks} checks: `));
+    const a = document.createElement('a');
+    a.href = `/api/wall/backups/${encodeURIComponent(out.backup)}`;
+    a.textContent = out.backup;
+    note.appendChild(a);
+  } catch (e) {
+    note.textContent = e.message;
+  }
+};
+
+function renderWallSummary() {
+  const parts = [`${wall.totalChecks} check${wall.totalChecks === 1 ? '' : 's'} total`];
+  parts.push(wall.lastCheckAt ? `last ${formatAgo(wall.lastCheckAt)}` : 'no checks yet');
+  if (!wall.accountOnline) parts.push('no account online');
+  $('wall-summary').textContent = parts.join(' · ');
+}
+
+function renderWallBot() {
+  const state = $('wall-state');
+  state.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  state.className = 'wall-state' + (wall.raidActive ? ' raid' : (wall.active ? ' on' : ''));
+
+  renderWallSummary();
+
+  const list = $('wall-list');
+  list.innerHTML = '';
+  if (!wall.top.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leaderboard-empty';
+    empty.textContent = 'No checks recorded yet.';
+    list.appendChild(empty);
+  } else {
+    wall.top.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = 'leaderboard-row';
+
+      const rank = document.createElement('span');
+      rank.className = 'leaderboard-rank';
+      rank.textContent = `${i + 1}.`;
+
+      const name = document.createElement('span');
+      name.className = 'leaderboard-name';
+      name.textContent = entry.player;
+
+      const checks = document.createElement('span');
+      checks.className = 'leaderboard-points';
+      checks.textContent = entry.checks;
+
+      row.append(rank, name, checks);
+      list.appendChild(row);
+    });
+  }
+
+  renderRoster();
+}
+
+function renderRoster() {
+  $('roster-count').textContent = `${wall.roster.length}`;
+  const list = $('roster-list');
+  list.innerHTML = '';
+  if (!wall.roster.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leaderboard-empty';
+    empty.textContent = 'Nobody authorized yet.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const entry of wall.roster) {
+    const row = document.createElement('div');
+    row.className = 'leaderboard-row';
+
+    const name = document.createElement('span');
+    name.className = 'leaderboard-name';
+    name.textContent = entry.player;
+
+    const badge = document.createElement('span');
+    badge.className = 'roster-badge' + (entry.verified ? ' ok' : '');
+    badge.textContent = entry.verified ? 'verified' : 'pending';
+
+    const del = document.createElement('button');
+    del.className = 'link-btn danger';
+    del.textContent = '✕';
+    del.title = `Remove ${entry.player}`;
+    del.onclick = () => removeRosterPlayer(entry.player);
+
+    row.append(name, badge, del);
+    list.appendChild(row);
+  }
+}
+
+$('roster-add').onclick = addRosterPlayer;
+$('roster-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addRosterPlayer(); });
+
+async function addRosterPlayer() {
+  const input = $('roster-input');
+  const player = input.value.trim();
+  if (!player) return;
+  try {
+    wall.roster = await api('/api/wall/players', { method: 'POST', body: JSON.stringify({ player }) });
+    input.value = '';
+    renderRoster();
+  } catch (e) {
+    appendConsole({ text: e.message, error: true });
+  }
+}
+
+async function removeRosterPlayer(player) {
+  try {
+    wall.roster = await api(`/api/wall/players/${encodeURIComponent(player)}`, { method: 'DELETE' });
+    renderRoster();
+  } catch (e) {
+    appendConsole({ text: e.message, error: true });
+  }
+}
 
 // ===== Console =====
 function currentTarget() { return selectedAccountId; }

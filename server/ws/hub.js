@@ -36,6 +36,8 @@ export default class Hub {
       // And the latest stored leaderboard, if any.
       const lb = this.botManager.leaderboardSnapshot(userId);
       if (lb) ws.send(JSON.stringify({ type: 'leaderboard', entries: lb.entries, updatedAt: lb.updatedAt }));
+      // Wall-bot state (active flags, totals, top checkers, roster).
+      ws.send(JSON.stringify(this.botManager.wallSnapshot(userId)));
 
       ws.on('message', (raw) => this._onMessage(userId, raw));
       ws.on('close', () => {
@@ -58,6 +60,11 @@ export default class Hub {
       case 'equipArmor': bm.equipArmor(userId, target); break;
       case 'useItem': bm.useItem(userId, target); break;
       case 'refreshLeaderboard': bm.refreshLeaderboard(userId); break;
+      case 'wallStart': bm.wallStart(userId); break;
+      case 'wallEnd': bm.wallEnd(userId); break;
+      case 'wallCheck': bm.manualCheck(userId, msg.player); break;
+      case 'raidStart': bm.raidStart(userId); break;
+      case 'raidStop': bm.raidStop(userId); break;
       default: break;
     }
   }

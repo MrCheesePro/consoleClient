@@ -52,13 +52,57 @@ db.exec(`
     proxy_pool          TEXT    NOT NULL DEFAULT '',
     leaderboard_enabled INTEGER NOT NULL DEFAULT 0,
     leaderboard_command TEXT    NOT NULL DEFAULT '/f top',
-    leaderboard_account TEXT    NOT NULL DEFAULT ''
+    leaderboard_account TEXT    NOT NULL DEFAULT '',
+    wall_enabled          INTEGER NOT NULL DEFAULT 0,
+    wall_account          TEXT    NOT NULL DEFAULT '',
+    wall_interval_ms      INTEGER NOT NULL DEFAULT 600000,
+    wall_trigger          TEXT    NOT NULL DEFAULT 'check, checked, walls, wall',
+    wall_require_verified INTEGER NOT NULL DEFAULT 1,
+    wall_reminder_message TEXT    NOT NULL DEFAULT 'Wall check! Say "check" when done.',
+    wall_chat_prefix      TEXT    NOT NULL DEFAULT '/f c ',
+    wall_chat_pattern     TEXT    NOT NULL DEFAULT '',
+    wall_to_minecraft     INTEGER NOT NULL DEFAULT 1,
+    wall_to_discord       INTEGER NOT NULL DEFAULT 0,
+    wall_discord_webhook  TEXT    NOT NULL DEFAULT '',
+    wall_quiet_start      TEXT    NOT NULL DEFAULT '',
+    wall_quiet_end        TEXT    NOT NULL DEFAULT '',
+    raid_enabled          INTEGER NOT NULL DEFAULT 0,
+    raid_trigger          TEXT    NOT NULL DEFAULT 'weewoo, raid, raided',
+    raid_off_trigger      TEXT    NOT NULL DEFAULT 'weeoff, raidoff',
+    raid_message          TEXT    NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE',
+    raid_delay_ms         INTEGER NOT NULL DEFAULT 15000
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
     user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     updated_at INTEGER NOT NULL,
     entries    TEXT    NOT NULL DEFAULT '[]'
+  );
+
+  -- Wall bot: per-player check counts, the running total, and the authorized-player roster.
+  -- The player column is always stored lowercased (Minecraft names are case-preserving but
+  -- not case-sensitive) so lookups can't miss on casing alone.
+  CREATE TABLE IF NOT EXISTS wall_stats (
+    user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player     TEXT    NOT NULL,
+    checks     INTEGER NOT NULL DEFAULT 0,
+    last_check INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, player)
+  );
+
+  CREATE TABLE IF NOT EXISTS wall_state (
+    user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    total_checks  INTEGER NOT NULL DEFAULT 0,
+    last_check_at INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS wall_players (
+    user_id  TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player   TEXT    NOT NULL,
+    verified INTEGER NOT NULL DEFAULT 0,
+    label    TEXT    NOT NULL DEFAULT '',
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, player)
   );
 `);
 
@@ -71,6 +115,24 @@ db.exec(`
   addColumn('leaderboard_enabled', `leaderboard_enabled INTEGER NOT NULL DEFAULT 0`);
   addColumn('leaderboard_command', `leaderboard_command TEXT NOT NULL DEFAULT '/f top'`);
   addColumn('leaderboard_account', `leaderboard_account TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_enabled', `wall_enabled INTEGER NOT NULL DEFAULT 0`);
+  addColumn('wall_account', `wall_account TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_interval_ms', `wall_interval_ms INTEGER NOT NULL DEFAULT 600000`);
+  addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT 'check, checked, walls, wall'`);
+  addColumn('wall_require_verified', `wall_require_verified INTEGER NOT NULL DEFAULT 1`);
+  addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT 'Wall check! Say "check" when done.'`);
+  addColumn('wall_chat_prefix', `wall_chat_prefix TEXT NOT NULL DEFAULT '/f c '`);
+  addColumn('wall_chat_pattern', `wall_chat_pattern TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_to_minecraft', `wall_to_minecraft INTEGER NOT NULL DEFAULT 1`);
+  addColumn('wall_to_discord', `wall_to_discord INTEGER NOT NULL DEFAULT 0`);
+  addColumn('wall_discord_webhook', `wall_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_quiet_start', `wall_quiet_start TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_quiet_end', `wall_quiet_end TEXT NOT NULL DEFAULT ''`);
+  addColumn('raid_enabled', `raid_enabled INTEGER NOT NULL DEFAULT 0`);
+  addColumn('raid_trigger', `raid_trigger TEXT NOT NULL DEFAULT 'weewoo, raid, raided'`);
+  addColumn('raid_off_trigger', `raid_off_trigger TEXT NOT NULL DEFAULT 'weeoff, raidoff'`);
+  addColumn('raid_message', `raid_message TEXT NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE'`);
+  addColumn('raid_delay_ms', `raid_delay_ms INTEGER NOT NULL DEFAULT 15000`);
 }
 
 const now = () => Date.now();
@@ -132,6 +194,11 @@ const SETTINGS_FIELDS = [
   'server_version', 'show_chat', 'auto_reconnect', 'sneak', 'anti_afk',
   'offline_mode', 'spam_message', 'spam_delay_ms', 'spam_enabled', 'proxy_pool',
   'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
+  'wall_enabled', 'wall_account', 'wall_interval_ms', 'wall_trigger',
+  'wall_require_verified', 'wall_reminder_message', 'wall_chat_prefix',
+  'wall_chat_pattern', 'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
+  'wall_quiet_start', 'wall_quiet_end',
+  'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_delay_ms',
 ];
 
 export function updateSettings(userId, patch) {
@@ -150,5 +217,58 @@ export const upsertLeaderboard = db.prepare(`
   INSERT INTO leaderboard (user_id, updated_at, entries) VALUES (@user_id, @updated_at, @entries)
   ON CONFLICT(user_id) DO UPDATE SET updated_at = @updated_at, entries = @entries
 `);
+
+// ---- Wall bot ----
+// Every `player` argument here is expected to be lowercased by the caller (see normalizePlayer
+// in WallBot.js) so that casing can never split one player across two rows.
+
+export const getWallState = db.prepare(`SELECT * FROM wall_state WHERE user_id = ?`);
+export const upsertWallState = db.prepare(`
+  INSERT INTO wall_state (user_id, total_checks, last_check_at)
+  VALUES (@user_id, @total_checks, @last_check_at)
+  ON CONFLICT(user_id) DO UPDATE SET total_checks = @total_checks, last_check_at = @last_check_at
+`);
+
+export const incWallCheck = db.prepare(`
+  INSERT INTO wall_stats (user_id, player, checks, last_check)
+  VALUES (@user_id, @player, 1, @last_check)
+  ON CONFLICT(user_id, player) DO UPDATE SET checks = checks + 1, last_check = @last_check
+`);
+
+export const topWallCheckers = db.prepare(
+  `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?
+   ORDER BY checks DESC, player ASC LIMIT 10`
+);
+export const allWallCheckers = db.prepare(
+  `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?
+   ORDER BY checks DESC, player ASC`
+);
+
+export const listWallPlayers = db.prepare(
+  `SELECT player, verified, label, added_at FROM wall_players WHERE user_id = ?
+   ORDER BY player ASC`
+);
+export const getWallPlayer = db.prepare(
+  `SELECT * FROM wall_players WHERE user_id = ? AND player = ?`
+);
+export const upsertWallPlayer = db.prepare(`
+  INSERT INTO wall_players (user_id, player, verified, label, added_at)
+  VALUES (@user_id, @player, @verified, @label, @added_at)
+  ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label
+`);
+export const deleteWallPlayer = db.prepare(
+  `DELETE FROM wall_players WHERE user_id = ? AND player = ?`
+);
+
+// Clear the scoreboard for one user in a single atomic step. Deliberately leaves wall_players
+// alone: a map reset wipes scores, not who is authorized to log a check.
+const _clearWallStats = db.prepare(`DELETE FROM wall_stats WHERE user_id = ?`);
+const _zeroWallState = db.prepare(
+  `UPDATE wall_state SET total_checks = 0, last_check_at = 0 WHERE user_id = ?`
+);
+export const resetWallStats = db.transaction((userId) => {
+  _clearWallStats.run(userId);
+  _zeroWallState.run(userId);
+});
 
 export default db;

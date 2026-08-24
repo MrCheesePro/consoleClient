@@ -27,12 +27,15 @@ function parseAddress(serverIp) {
  * through the `emit(type, payload)` callback supplied by BotManager.
  */
 export default class BotSession {
-  constructor({ userId, account, settings, emit, proxy = null }) {
+  constructor({ userId, account, settings, emit, proxy = null, onChat = null }) {
     this.userId = userId;
     this.account = account;      // { id, username, auth_type, token_ref }
     this.settings = settings;    // snapshot of the user's settings row
     this.emit = emit;
     this.proxy = proxy;          // null = direct; else { host, port, type, userId, password }
+    // Optional observer for every incoming chat line, independent of the show_chat display
+    // setting — the wall bot has to watch chat even when the console isn't showing it.
+    this.onChat = onChat;
 
     this.bot = null;
     this.status = 'offline';     // offline | connecting | online
@@ -202,7 +205,12 @@ export default class BotSession {
     this.spawnCount = 0;
 
     bot.on('spawn', () => this._onSpawn());
-    bot.on('messagestr', (msg) => { if (this.settings.show_chat) this._console(msg); });
+    bot.on('messagestr', (msg) => {
+      const text = String(msg);
+      if (this.settings.show_chat) this._console(text);
+      // An observer must never be able to take the chat listener down with it.
+      if (this.onChat) { try { this.onChat(text); } catch { /* ignore */ } }
+    });
     bot.on('kicked', (reason) => this._console(`Kicked: ${typeof reason === 'string' ? reason : JSON.stringify(reason)}`));
     bot.on('error', (err) => this._err(err.message));
     bot.on('end', (reason) => this._onEnd(reason));

@@ -59,6 +59,56 @@
         <div id="leaderboard-updated" class="leaderboard-updated"></div>
       </div>
 
+      <!-- Wall bot -->
+      <div class="leaderboard wallbot">
+        <div class="leaderboard-head">
+          <span class="leaderboard-title">Wall Bot</span>
+          <span id="wall-state" class="wall-state">off</span>
+        </div>
+
+        <div class="wall-actions">
+          <button id="wall-start" class="btn btn-pill">Start</button>
+          <button id="wall-end" class="btn btn-pill">Stop</button>
+          <button id="wall-check" class="btn btn-pill">Mark checked</button>
+          <button id="raid-start" class="btn btn-pill btn-warn">Raid</button>
+          <button id="raid-stop" class="btn btn-pill">Raid off</button>
+        </div>
+
+        <div id="wall-summary" class="leaderboard-updated"></div>
+        <div id="wall-list" class="leaderboard-list"></div>
+
+        <div class="wall-actions">
+          <button id="wall-export" class="link-btn">Export JSON</button>
+          <button id="wall-reset" class="link-btn danger">Reset stats</button>
+        </div>
+        <!-- Two-step confirm rather than window.confirm: a native modal blocks the page, which
+             is exactly the wrong behavior when the panel is being driven remotely. -->
+        <div id="wall-reset-confirm" class="wall-confirm hidden">
+          <span>Wipe all check counts? A JSON backup is saved first.</span>
+          <button id="wall-reset-yes" class="btn btn-pill btn-red">Yes, reset</button>
+          <button id="wall-reset-no" class="link-btn">Cancel</button>
+        </div>
+        <div id="wall-reset-result" class="wall-note"></div>
+      </div>
+
+      <!-- Authorized players -->
+      <div class="leaderboard wallbot">
+        <div class="leaderboard-head">
+          <span class="leaderboard-title">Authorized Players</span>
+          <span id="roster-count" class="account-count">0</span>
+        </div>
+        <div class="account-inputs">
+          <div class="input-group">
+            <input id="roster-input" class="text-input" placeholder="Minecraft username" />
+          </div>
+          <button id="roster-add" class="icon-btn" title="Add authorized player">＋</button>
+        </div>
+        <div id="roster-list" class="leaderboard-list"></div>
+        <p class="proxy-hint">Added here = pre-verified. Players can also self-verify in game:
+          they say <code>verify</code>, the bot messages them a code, they reply
+          <code>verify &lt;code&gt;</code>.</p>
+      </div>
+
       <div class="panel-foot-note">Multi-account AFK client · v1.0</div>
     </section>
 
@@ -104,6 +154,60 @@
 
         <label class="settings-label">Leaderboard account</label>
         <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
+
+        <label class="settings-label settings-head">Wall bot</label>
+        <button class="toggle" data-setting="wall_enabled" aria-pressed="false"></button>
+
+        <label class="settings-label">Wall bot account</label>
+        <select id="set-wall_account" class="select-input" data-setting="wall_account"></select>
+
+        <label class="settings-label">Reminder interval (ms)</label>
+        <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
+
+        <label class="settings-label">Reminder message</label>
+        <input class="text-input" placeholder="Wall check!" data-setting="wall_reminder_message" />
+
+        <label class="settings-label">Check triggers</label>
+        <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
+
+        <label class="settings-label">Require verification</label>
+        <button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button>
+
+        <label class="settings-label">Send to Minecraft</label>
+        <button class="toggle" data-setting="wall_to_minecraft" aria-pressed="false"></button>
+
+        <label class="settings-label">Minecraft chat prefix</label>
+        <input class="text-input" placeholder="/f c " data-setting="wall_chat_prefix" />
+
+        <label class="settings-label">Send to Discord</label>
+        <button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button>
+
+        <label class="settings-label">Discord webhook URL</label>
+        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
+
+        <label class="settings-label">Quiet hours start</label>
+        <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
+
+        <label class="settings-label">Quiet hours end</label>
+        <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
+
+        <label class="settings-label">Chat parse pattern</label>
+        <input class="text-input" placeholder="blank = auto-detect" data-setting="wall_chat_pattern" />
+
+        <label class="settings-label settings-head">Raid alerts</label>
+        <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
+
+        <label class="settings-label">Raid message</label>
+        <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
+
+        <label class="settings-label">Raid repeat (ms)</label>
+        <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
+
+        <label class="settings-label">Raid on triggers</label>
+        <input class="text-input" placeholder="weewoo, raid, raided" data-setting="raid_trigger" />
+
+        <label class="settings-label">Raid off triggers</label>
+        <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
 
         <label class="settings-label">Drop all items</label>
         <button id="drop-btn" class="btn btn-pill">Drop</button>

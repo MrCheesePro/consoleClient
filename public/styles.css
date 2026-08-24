@@ -204,6 +204,28 @@ body {
 .leaderboard-updated { color: var(--text-dim); font-size: 11px; margin-top: 6px; }
 .leaderboard-empty { color: #4a4a50; font-size: 12px; text-align: center; padding: 16px 8px; }
 
+/* ---------- Wall bot (reuses the .leaderboard-* row styles above) ---------- */
+.wallbot .leaderboard-list { max-height: 180px; }
+.wall-state { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+.wall-state.on { color: var(--green); }
+.wall-state.raid { color: var(--red); font-weight: 600; }
+.wall-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.wall-actions .btn-pill { padding: 6px 14px; font-size: 13px; }
+.wall-actions:last-of-type { margin-top: 8px; margin-bottom: 0; }
+.btn-warn { border-color: var(--red-dark); color: var(--red); }
+.link-btn.danger { color: var(--red); }
+.wall-confirm {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-top: 8px; padding: 8px; font-size: 12px;
+  border: 1px solid var(--red-dark); border-radius: 8px;
+}
+.wall-confirm .btn-pill { padding: 5px 12px; font-size: 12px; }
+.wall-note { color: var(--text-dim); font-size: 11px; margin-top: 6px; }
+.wall-note a { color: var(--green); }
+.roster-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-dim); }
+.roster-badge.ok { color: var(--green); }
+.settings-head { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding-top: 8px; }
+
 .panel-foot-note { margin-top: 20px; color: var(--text-dim); font-size: 13px; }
 .panel-foot-note.right { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: auto; padding-top: 20px; }
 

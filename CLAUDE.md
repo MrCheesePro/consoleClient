@@ -15,7 +15,7 @@ local SQLite file; bot chat/status stream to the browser over one WebSocket.
 npm install
 npm start      # node server/index.js  -> http://localhost:3000
 npm run dev    # same, with --watch auto-restart
-npm test       # node --test (no tests exist yet)
+npm test       # node --test (test/wallbot.test.js: chat parsing, triggers, verification)
 ```
 
 There is no build step or bundler — `public/` is served as static files.
@@ -32,6 +32,7 @@ server/
   bots/
     BotManager.js   Owns all live bots, keyed `${userId}:${accountId}`; fans events to WS
     BotSession.js   One mineflayer bot: connect, reconnect, AFK behaviors, inventory
+    WallBot.js      Wall-check reminders, chat triggers, player verification, raid alerts
   db/db.js          better-sqlite3: schema (users/accounts/settings) + prepared queries
   ws/hub.js         WebSocket registry per user; routes inbound control msgs to BotManager
 public/
@@ -70,6 +71,15 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   in `db.js`, the `BOOL_KEYS`/`INT_KEYS` sets in `api.js`, and a `data-setting`-tagged
   input in `index.html` (the client auto-wires any `[data-setting]` element).
 - Every bot event carries `accountId`; `'all'` targets all of the user's bots.
+- **Wall bot** state (`wallState`) streams over WS like `leaderboard` does — `hub.handleUpgrade`
+  replays a snapshot on (re)connect. Inbound control messages: `wallStart`, `wallEnd`,
+  `wallCheck`, `raidStart`, `raidStop`. But the stats **export/reset** and the **roster CRUD**
+  live on REST (`/api/wall/*`) because they're file- and CRUD-shaped, not live data.
+- `BotSession` takes an optional `onChat` callback that fires for every incoming chat line
+  regardless of the `show_chat` display setting — that's how `WallBot` observes chat without
+  forcing the console on. `BotManager` wires it when it constructs each session.
+- Wall-bot player names are stored **lowercased** in `wall_stats` / `wall_players`
+  (`normalizePlayer` in `WallBot.js`); compare lowercased or one player splits across two rows.
 
 ## Conventions
 
@@ -84,7 +94,8 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 
 `PORT` (3000) · `APP_PASSWORD` (`turtlegang` — change it) · `SESSION_SECRET` (random per
 boot; set a stable value in prod) · `DB_PATH` (`data/app.db`) · `TOKENS_DIR`
-(`data/tokens`) · `MAX_BOTS_PER_USER` (20) · `NODE_ENV` (`production` enables secure cookies).
+(`data/tokens`) · `WALL_BACKUPS_DIR` (`data/wall-backups`) · `MAX_BOTS_PER_USER` (20) ·
+`NODE_ENV` (`production` enables secure cookies).
 
 ## Gotchas
 

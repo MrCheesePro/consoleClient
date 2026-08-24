@@ -1,4 +1,5 @@
 import BotSession from './BotSession.js';
+import WallBot from './WallBot.js';
 import {
   getSettings, listAccounts, getAccountById, getLeaderboard, upsertLeaderboard,
 } from '../db/db.js';
@@ -74,6 +75,10 @@ export default class BotManager {
     this._lbBusy = new Set();             // userIds with a refresh in flight (avoid overlap)
     // Hourly leaderboard refresh for every user that currently has bots online.
     this._leaderboardTimer = setInterval(() => this._hourlyLeaderboard(), LEADERBOARD_INTERVAL_MS);
+    this.wallBot = new WallBot({
+      emitToUser: this.emitToUser,
+      resolveSession: (userId) => this._wallSession(userId),
+    });
   }
 
   _key(userId, accountId) { return `${userId}:${accountId}`; }
@@ -89,6 +94,9 @@ export default class BotManager {
       this.emitToUser(userId, { type, ...payload });
       if (type === 'botStatus') {
         this._broadcastOnlineCount(userId);
+        // The wall card shows whether an account is available to talk through, so it has to
+        // repaint whenever a bot connects or drops.
+        this.wallBot.broadcast(userId);
         if (payload && payload.status === 'online') this._maybeAutoRefreshLeaderboard(userId);
       }
     };
@@ -143,7 +151,10 @@ export default class BotManager {
         proxy = entry; // null = direct/primary IP
       }
 
-      const session = new BotSession({ userId, account, settings, emit: this._emit(userId), proxy });
+      const session = new BotSession({
+        userId, account, settings, emit: this._emit(userId), proxy,
+        onChat: (text) => this.wallBot.handleChat(userId, session, text),
+      });
       this.sessions.set(key, session);
       session.start();
       results.push(account.id);
@@ -258,6 +269,30 @@ export default class BotManager {
       if (s && s.leaderboard_enabled) this.refreshLeaderboard(userId).catch(() => {});
     }
   }
+
+  // ---- Wall bot ----
+
+  /**
+   * Which live session the wall bot talks and listens through: the designated account when it's
+   * online, else the first online bot — the same fallback `refreshLeaderboard` uses.
+   */
+  _wallSession(userId) {
+    const settings = getSettings.get(userId);
+    if (settings?.wall_account) {
+      const s = this.sessions.get(this._key(userId, settings.wall_account));
+      if (s && s.status === 'online') return s;
+    }
+    return this._onlineSessionsFor(userId)[0] || null;
+  }
+
+  wallStart(userId) { this.wallBot.wallStart(userId); }
+  wallEnd(userId) { this.wallBot.wallEnd(userId); }
+  manualCheck(userId, player) { this.wallBot.manualCheck(userId, player); }
+  raidStart(userId) { this.wallBot.raidStart(userId); }
+  raidStop(userId) { this.wallBot.raidStop(userId); }
+  wallSnapshot(userId) { return this.wallBot.snapshot(userId); }
+  wallBroadcast(userId) { this.wallBot.broadcast(userId); }
+  wallReload(userId) { this.wallBot.reload(userId); }
 
   // After a bot comes online, do one delayed refresh (debounced per user) so the board
   // populates soon after connecting instead of waiting for the next hourly tick.
