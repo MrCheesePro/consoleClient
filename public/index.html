@@ -259,9 +259,17 @@
           <label class="settings-label">Quiet hours end</label>
           <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
 
-          <label class="settings-label">Chat parse pattern</label>
-          <input class="text-input" placeholder="blank = auto-detect" data-setting="wall_chat_pattern" />
+          <label class="settings-label">Whisper command</label>
+          <input class="text-input" placeholder="/msg" data-setting="wall_msg_command" />
+
+          <label class="settings-label">Listen on</label>
+          <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
         </div>
+
+        <p class="proxy-hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
+          trigger only when a player messages the bot privately, so a stray word in public chat
+          can't fire it. <code>chat</code> reads public and faction chat instead. Anything else is
+          treated as a custom <code>/regex/</code> capturing the player name then the message.</p>
 
         <h3 class="panel-subtitle">Raid alerts</h3>
         <div class="settings-grid">

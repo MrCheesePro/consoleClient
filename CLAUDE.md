@@ -80,6 +80,13 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   forcing the console on. `BotManager` wires it when it constructs each session.
 - Wall-bot player names are stored **lowercased** in `wall_stats` / `wall_players`
   (`normalizePlayer` in `WallBot.js`); compare lowercased or one player splits across two rows.
+- `wall_chat_pattern` selects how chat is parsed: the names `dm` (default when blank) and `chat`
+  resolve to `DM_CHAT_PATTERN` / `PUBLIC_CHAT_PATTERN` in `WallBot.js`, anything else is used as a
+  regex. Group 1 must capture the player, group 2 the message. DM mode is the default so a trigger
+  requires a deliberate whisper rather than any word said in public chat.
+- The bot's outgoing whispers render as `[me -> player]`, the mirror of the `[player -> me]` DM
+  pattern, so they can't parse as inbound and loop. Don't "improve" that regex to match both
+  directions.
 
 ## Conventions
 

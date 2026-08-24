@@ -61,6 +61,7 @@ db.exec(`
     wall_reminder_message TEXT    NOT NULL DEFAULT 'Wall check! Say "check" when done.',
     wall_chat_prefix      TEXT    NOT NULL DEFAULT '/f c ',
     wall_chat_pattern     TEXT    NOT NULL DEFAULT '',
+    wall_msg_command      TEXT    NOT NULL DEFAULT '/msg',
     wall_to_minecraft     INTEGER NOT NULL DEFAULT 1,
     wall_to_discord       INTEGER NOT NULL DEFAULT 0,
     wall_discord_webhook  TEXT    NOT NULL DEFAULT '',
@@ -123,6 +124,7 @@ db.exec(`
   addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT 'Wall check! Say "check" when done.'`);
   addColumn('wall_chat_prefix', `wall_chat_prefix TEXT NOT NULL DEFAULT '/f c '`);
   addColumn('wall_chat_pattern', `wall_chat_pattern TEXT NOT NULL DEFAULT ''`);
+  addColumn('wall_msg_command', `wall_msg_command TEXT NOT NULL DEFAULT '/msg'`);
   addColumn('wall_to_minecraft', `wall_to_minecraft INTEGER NOT NULL DEFAULT 1`);
   addColumn('wall_to_discord', `wall_to_discord INTEGER NOT NULL DEFAULT 0`);
   addColumn('wall_discord_webhook', `wall_discord_webhook TEXT NOT NULL DEFAULT ''`);
@@ -196,7 +198,7 @@ const SETTINGS_FIELDS = [
   'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
   'wall_enabled', 'wall_account', 'wall_interval_ms', 'wall_trigger',
   'wall_require_verified', 'wall_reminder_message', 'wall_chat_prefix',
-  'wall_chat_pattern', 'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
+  'wall_chat_pattern', 'wall_msg_command', 'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
   'wall_quiet_start', 'wall_quiet_end',
   'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_delay_ms',
 ];

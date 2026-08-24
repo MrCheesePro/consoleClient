@@ -27,6 +27,19 @@ A web-hosted control panel for running Minecraft AFK bots (built on
 Pick one loaded account as the wall bot (Settings → *Wall bot account*, or leave it on Auto to
 use the first online bot). It watches that account's chat and reacts to trigger words.
 
+**Listening.** By default the bot only reacts to a **private message sent to it** — a player
+whispers `walls` and it counts. A stray "check" in public chat is ignored, so nobody fires a
+trigger by accident. Set *Listen on* to change this:
+
+| Value | Behavior |
+|-------|----------|
+| `dm` (blank = this) | Private messages to the bot only: `[wzul -> me] walls` |
+| `chat` | Public and faction chat: `[Member] wzul: walls` |
+| `/regex/` | Custom — capture group 1 is the player, group 2 the message |
+
+Set **Whisper command** to whatever your server uses (`/msg`, `/w`, `/tell`). The bot replies
+privately for verification codes and refusals, so if this is wrong, verification silently fails.
+
 **Triggers** are configured as a comma-separated list (`check, checked, walls, wall`) matched on
 whole-word boundaries, so `checkers` won't fire `check`. If you need something more precise, wrap
 a regex in slashes instead: `/^\s*wall\w*\b/`. The same applies to the raid on/off triggers.
@@ -40,9 +53,9 @@ reminders; leave either bound blank to disable them.
 **Verification** is on by default, so only authorized names can log a check or start a raid.
 Two ways onto the roster:
 
-- **In game** — a player says `verify`, the bot privately messages them a 6-digit code, and they
-  reply `verify <code>` within 10 minutes. Because the code only arrives as a private message to
-  that account, a spoofed chat line can't claim someone else's name.
+- **In game** — a player messages the bot `verify`, it privately messages back a 6-digit code, and
+  they reply `verify <code>` within 10 minutes. Because the code only arrives as a private message
+  to that account, a spoofed chat line can't claim someone else's name.
 - **From the panel** — type a username into *Authorized Players*; it lands pre-verified.
 
 Turn *Require verification* off to count anyone who types a trigger.

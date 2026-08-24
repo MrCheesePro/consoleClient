@@ -12,9 +12,27 @@ const CODE_MAX_PER_HOUR = 3;           // outstanding-code rate limit, per playe
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
 
-// Default chat parser. Server formats vary a lot, so this stays deliberately loose:
-// optional bracketed tags, an optional rank/faction word, then `Name: message` or `Name > message`.
-export const DEFAULT_CHAT_PATTERN = '^(?:\\[[^\\]]*\\]\\s*)*(?:\\S+\\s+)??(\\w{3,16})\\s*[:>]\\s*(.*)$';
+// Two built-in chat parsers, selected by name from the wall_chat_pattern setting.
+//
+// `dm` — only private messages sent TO the bot. Leading server/world tags are skipped, then
+// `[sender -> me] message`. This deliberately does NOT match public chat, so a stray "check"
+// in faction chat can't register; a player has to message the bot on purpose. It also can't
+// match the bot's own outgoing whispers, which read `[me -> sender] ...`.
+export const DM_CHAT_PATTERN = '^(?:\\[[^\\]]*\\]\\s*)*\\[\\s*(\\w{3,16})\\s*->\\s*(?:me|you)\\s*\\]\\s*(.*)$';
+
+// `chat` — public/faction chat: optional bracketed tags, an optional rank word, then
+// `Name: message` or `Name > message`. Deliberately loose, since formats vary a lot.
+export const PUBLIC_CHAT_PATTERN = '^(?:\\[[^\\]]*\\]\\s*)*(?:\\S+\\s+)??(\\w{3,16})\\s*[:>]\\s*(.*)$';
+
+// Blank setting = private messages only. Triggers should be a deliberate act, not something
+// anyone can fire by mentioning a word in chat.
+export const DEFAULT_CHAT_PATTERN = DM_CHAT_PATTERN;
+
+const NAMED_PATTERNS = {
+  dm: DM_CHAT_PATTERN,
+  chat: PUBLIC_CHAT_PATTERN,
+  public: PUBLIC_CHAT_PATTERN,
+};
 
 // ---- pure helpers (exported for tests) ----
 
@@ -43,15 +61,19 @@ function toRegExp(source, extraFlags = '') {
 
 const patternCache = new Map();
 function compilePattern(pattern) {
-  const key = String(pattern ?? '').trim() || DEFAULT_CHAT_PATTERN;
+  const raw = String(pattern ?? '').trim();
+  // Accept the friendly names "dm" / "chat" as well as a raw regex, so the common cases don't
+  // require anyone to write one.
+  const key = NAMED_PATTERNS[raw.toLowerCase()] || raw || DEFAULT_CHAT_PATTERN;
   if (patternCache.has(key)) return patternCache.get(key);
   let re;
   try {
-    re = toRegExp(key);
+    // Case-insensitive so "-> me" / "-> You" and rank tags of any casing all match.
+    re = toRegExp(key, 'i');
   } catch {
     // A user-supplied pattern that doesn't compile falls back to the built-in one rather than
     // throwing from inside the chat handler, which would kill the listener for every later line.
-    try { re = new RegExp(DEFAULT_CHAT_PATTERN); } catch { re = null; }
+    try { re = new RegExp(DEFAULT_CHAT_PATTERN, 'i'); } catch { re = null; }
   }
   patternCache.set(key, re);
   return re;
@@ -441,7 +463,10 @@ export default class WallBot {
       this._console(userId, `(to ${player}) ${text}`);
       return;
     }
-    this._enqueue(userId, `/msg ${player} ${text}`, text);
+    // Servers differ on the whisper command (/msg, /w, /tell, /pm). Verification codes are
+    // delivered this way, so getting it wrong silently breaks verification.
+    const cmd = String(settings.wall_msg_command || '/msg').trim();
+    this._enqueue(userId, `${cmd} ${player} ${text}`, text);
   }
 
   // Space outbound chat out. Bursting is what trips server anti-spam and gets the account muted.
