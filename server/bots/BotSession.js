@@ -207,7 +207,9 @@ export default class BotSession {
     bot.on('spawn', () => this._onSpawn());
     bot.on('messagestr', (msg) => {
       const text = String(msg);
-      if (this.settings.show_chat) this._console(text);
+      // The console is redacted; the observer gets the raw line because the wall bot has to
+      // compare the verify password against it.
+      if (this.settings.show_chat) this._console(this._redact(text));
       // An observer must never be able to take the chat listener down with it.
       if (this.onChat) { try { this.onChat(text); } catch { /* ignore */ } }
     });
@@ -339,6 +341,15 @@ export default class BotSession {
     if (this.status === status) return;
     this.status = status;
     this.emit('botStatus', { accountId: this.account.id, status });
+  }
+
+  // The verify password travels through chat as plain text, so a player whispering it would
+  // otherwise land it in the panel console — visible to anyone with the panel open, and kept
+  // in scrollback. split/join rather than a regex so the secret needs no escaping.
+  _redact(text) {
+    const secret = String(this.settings.wall_verify_password || '').trim();
+    if (!secret) return text;
+    return text.split(secret).join('***');
   }
 
   _console(text) {

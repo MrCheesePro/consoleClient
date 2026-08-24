@@ -53,9 +53,24 @@ reminders; leave either bound blank to disable them.
 **Verification** is on by default, so only authorized names can log a check or start a raid.
 Two ways onto the roster:
 
-- **In game** — a player messages the bot `verify`, it privately messages back a 6-digit code, and
-  they reply `verify <code>` within 10 minutes. Because the code only arrives as a private message
-  to that account, a spoofed chat line can't claim someone else's name.
+- **In game**, in two steps, both by private message to the bot:
+
+  1. `verify <password>` — the **Faction password** you set in the panel. The bot whispers back a
+     random 6-digit code, good for **15 minutes**.
+  2. `verify <code>` — confirms, and they're on the roster.
+
+  The code is tied to the player it was issued to, so overhearing someone else's is useless.
+  Re-sending the password while a code is still live repeats the same code rather than minting a
+  new one, so a lost whisper isn't a dead end.
+
+  Leave the password **blank to close self-verification entirely** — it fails shut, so a blank
+  field never means "anyone can join". Wrong guesses are capped at 5 per player per hour, and
+  failures are logged to the console without the guessed text.
+
+  The password travels through Minecraft chat as plain text and is stored unhashed in the
+  settings row. It's redacted from the panel console, but assume server staff can see it in
+  their chat logs — treat it as a shared door code, not a secret, and change it when someone
+  leaves the faction.
 - **From the panel** — type a username into *Authorized Players*; it lands pre-verified.
 
 Turn *Require verification* off to count anyone who types a trigger.

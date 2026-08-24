@@ -7,8 +7,9 @@ import {
 const TICK_MS = 30 * 1000;             // how often the reminder loop wakes up
 const CHECK_COOLDOWN_MS = 60 * 1000;   // per-player cooldown between counted checks
 const SEND_GAP_MS = 1500;              // minimum spacing between outbound chat messages
-const CODE_TTL_MS = 10 * 60 * 1000;    // verification code lifetime
-const CODE_MAX_PER_HOUR = 3;           // outstanding-code rate limit, per player
+const HOUR_MS = 60 * 60 * 1000;
+const VERIFY_MAX_PER_HOUR = 5;         // wrong password/code guesses allowed per player, per hour
+const CODE_TTL_MS = 15 * 60 * 1000;    // how long an issued verification code stays usable
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
 
@@ -140,6 +141,7 @@ export function isQuietHours(now, start, end) {
   return s < e ? (mins >= s && mins < e) : (mins >= s || mins < e);
 }
 
+/** Six-digit confirmation code. randomInt, not Math.random — this is a credential. */
 export function generateCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
@@ -180,8 +182,8 @@ export default class WallBot {
       raidTimer: null,
       cooldowns: new Map(),      // player -> ts of last counted check
       notices: new Map(),        // player -> ts of last "please verify" reply
-      pendingCodes: new Map(),   // player -> { code, expiresAt }
-      codeIssues: new Map(),     // player -> [ts, ...] within the last hour
+      verifyAttempts: new Map(), // player -> [ts, ...] of wrong password/code guesses this hour
+      pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
       queue: [],                 // pending outbound messages
       sendTimer: null,
       lastSentAt: 0,
@@ -270,53 +272,91 @@ export default class WallBot {
     return state.recentSent.some((sent) => message.includes(sent));
   }
 
+  /**
+   * Two-step self-verification, both steps over private message:
+   *   1. `verify <password>` — the shared faction password from the panel. Correct, and the bot
+   *      whispers back a random 6-digit code that lives for 15 minutes.
+   *   2. `verify <code>` — confirms, and the sender lands on the roster.
+   *
+   * The code is bound to the player it was issued to, so knowing someone else's code is useless:
+   * the lookup is keyed by whoever sent the message, and the server is what decides that name.
+   */
   _handleVerify(userId, settings, player, message) {
-    const m = /^\s*verify\b\s*(\d{6})?\s*$/i.exec(message);
+    const m = /^\s*verify\b\s*(.*)$/i.exec(message);
     if (!m) return false;
 
+    const supplied = m[1].trim();
+    const password = String(settings.wall_verify_password || '').trim();
     const state = this._stateFor(userId);
-    const supplied = m[1];
+    const now = Date.now();
 
+    if (this._isAuthorized(userId, settings, player)) {
+      this._whisper(userId, player, 'You are already verified.');
+      return true;
+    }
+
+    // No password set = self-verification is closed, rather than open to everyone. Failing
+    // shut matters here: the alternative would quietly let any passer-by onto the roster.
+    if (!password) {
+      this._whisper(userId, player, 'Self-verification is disabled. Ask an admin to add you.');
+      return true;
+    }
+
+    // Asking without an argument is a help request, not a guess — don't spend an attempt on it.
     if (!supplied) {
-      if (this._isAuthorized(userId, settings, player)) {
-        this._whisper(userId, player, 'You are already verified.');
-        return true;
-      }
-      const now = Date.now();
-      const issues = (state.codeIssues.get(player) || []).filter((ts) => now - ts < 60 * 60 * 1000);
-      if (issues.length >= CODE_MAX_PER_HOUR) {
-        this._whisper(userId, player, 'Too many verification attempts. Try again later.');
-        state.codeIssues.set(player, issues);
-        return true;
-      }
-      const code = generateCode();
-      state.pendingCodes.set(player, { code, expiresAt: now + CODE_TTL_MS });
-      issues.push(now);
-      state.codeIssues.set(player, issues);
-      this._whisper(userId, player, `Your verification code is ${code} — reply "verify ${code}" in chat within 10 minutes.`);
-      this._console(userId, `Verification code issued to ${player}.`);
+      this._whisper(userId, player, 'Message me "verify <password>" with the faction password.');
       return true;
     }
 
-    const pending = state.pendingCodes.get(player);
-    if (!pending || pending.expiresAt < Date.now()) {
+    // Drop a stale code before anything else, so an expired one can't be completed and the
+    // password path issues a fresh one.
+    let pending = state.pendingCodes.get(player);
+    if (pending && pending.expiresAt <= now) {
       state.pendingCodes.delete(player);
-      this._whisper(userId, player, 'No pending code, or it expired. Say "verify" to get a new one.');
-      return true;
+      pending = null;
     }
-    // A wrong code burns the pending entry, so guessing costs a fresh (rate-limited) request.
-    state.pendingCodes.delete(player);
-    if (supplied !== pending.code) {
-      this._whisper(userId, player, 'Incorrect code. Say "verify" to get a new one.');
+
+    const attempts = (state.verifyAttempts.get(player) || []).filter((ts) => now - ts < HOUR_MS);
+    if (attempts.length >= VERIFY_MAX_PER_HOUR) {
+      state.verifyAttempts.set(player, attempts);
+      this._whisper(userId, player, 'Too many attempts. Try again later.');
       return true;
     }
 
-    upsertWallPlayer.run({
-      user_id: userId, player, verified: 1, label: '', added_at: Date.now(),
-    });
-    this._whisper(userId, player, 'Verified — your wall checks will now be counted.');
-    this._console(userId, `${player} verified.`);
-    this.broadcast(userId);
+    // Step 2: completing with a live code. Checked before the password so that a password which
+    // happens to be six digits still can't be confused with a code.
+    if (pending && supplied === pending.code) {
+      state.pendingCodes.delete(player);
+      state.verifyAttempts.delete(player);
+      upsertWallPlayer.run({
+        user_id: userId, player, verified: 1, label: '', added_at: now,
+      });
+      this._whisper(userId, player, 'Verified — your wall checks will now be counted.');
+      this._console(userId, `${player} verified.`);
+      this.broadcast(userId);
+      return true;
+    }
+
+    // Step 1: correct password issues a code. Re-sending the password while one is still live
+    // repeats the same code rather than minting a new one, so a lost whisper isn't a dead end
+    // and nobody can spam themselves a stream of codes.
+    if (supplied === password) {
+      if (!pending) {
+        pending = { code: generateCode(), expiresAt: now + CODE_TTL_MS };
+        state.pendingCodes.set(player, pending);
+        this._console(userId, `Verification code issued to ${player}.`);
+      }
+      const mins = Math.max(1, Math.round((pending.expiresAt - now) / 60000));
+      this._whisper(userId, player, `Your code is ${pending.code} — message me "verify ${pending.code}" within ${mins} minute${mins === 1 ? '' : 's'}.`);
+      return true;
+    }
+
+    attempts.push(now);
+    state.verifyAttempts.set(player, attempts);
+    const left = VERIFY_MAX_PER_HOUR - attempts.length;
+    this._whisper(userId, player, pending ? 'Wrong code.' : 'Wrong password.');
+    // Log that it happened, never what was guessed — the console is visible in the panel.
+    this._console(userId, `Failed verify attempt from ${player} (${left} left this hour).`);
     return true;
   }
 

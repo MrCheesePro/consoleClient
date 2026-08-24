@@ -153,6 +153,7 @@ function harness(overrides = {}) {
     // These cases exercise the authorization / cooldown / verification logic, so they pin the
     // parser to "chat" and feed public-chat lines. DM mode gets its own end-to-end case below.
     wall_chat_pattern: 'chat',
+    wall_verify_password: 'turtles',
     wall_to_minecraft: 0, // keep output on the console path so nothing is queued behind a timer
     wall_to_discord: 0,
     raid_enabled: 0,
@@ -183,44 +184,58 @@ test('an unauthorized player\'s trigger writes nothing', () => {
   } finally { wb.stopAll(); }
 });
 
-test('a correct code within the window verifies the player', () => {
+test('the password issues a code but does not verify on its own', () => {
   clearWallTables();
   const { wb, session } = harness();
   try {
-    wb.handleChat(USER, session, 'Notch: verify');
+    wb.handleChat(USER, session, 'Notch: verify turtles');
     const pending = wb.users.get(USER).pendingCodes.get('notch');
-    assert.ok(pending, 'expected a pending code for notch');
-
-    wb.handleChat(USER, session, `Notch: verify ${pending.code}`);
-    const row = db.getWallPlayer.get(USER, 'notch');
-    assert.ok(row && row.verified, 'notch should be verified');
+    assert.ok(pending, 'expected a pending code');
+    assert.match(pending.code, /^\d{6}$/, 'code should be six digits');
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined,
+      'the password alone must not grant access');
   } finally { wb.stopAll(); }
 });
 
-test('a wrong code does not verify, and burns the pending entry', () => {
+test('the issued code completes verification', () => {
   clearWallTables();
   const { wb, session } = harness();
   try {
-    wb.handleChat(USER, session, 'Notch: verify');
-    const pending = wb.users.get(USER).pendingCodes.get('notch');
-    const wrong = pending.code === '000000' ? '111111' : '000000';
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('notch');
 
-    wb.handleChat(USER, session, `Notch: verify ${wrong}`);
-    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined);
-    assert.equal(wb.users.get(USER).pendingCodes.has('notch'), false);
+    wb.handleChat(USER, session, `Notch: verify ${code}`);
+    assert.equal(db.getWallPlayer.get(USER, 'notch').verified, 1);
+    assert.equal(wb.users.get(USER).pendingCodes.has('notch'), false, 'code should be consumed');
   } finally { wb.stopAll(); }
 });
 
-test('an expired code does not verify', () => {
+test('the code expires after 15 minutes', () => {
   clearWallTables();
   const { wb, session } = harness();
   try {
-    wb.handleChat(USER, session, 'Notch: verify');
+    wb.handleChat(USER, session, 'Notch: verify turtles');
     const pending = wb.users.get(USER).pendingCodes.get('notch');
-    pending.expiresAt = Date.now() - 1; // age it out
+
+    // Confirm the window really is 15 minutes, then age it past the edge.
+    const ttlMinutes = Math.round((pending.expiresAt - Date.now()) / 60000);
+    assert.equal(ttlMinutes, 15);
+    pending.expiresAt = Date.now() - 1;
 
     wb.handleChat(USER, session, `Notch: verify ${pending.code}`);
-    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined);
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined, 'an expired code must not work');
+  } finally { wb.stopAll(); }
+});
+
+test('re-sending the password repeats the same code instead of minting a new one', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const first = wb.users.get(USER).pendingCodes.get('notch').code;
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const second = wb.users.get(USER).pendingCodes.get('notch').code;
+    assert.equal(second, first);
   } finally { wb.stopAll(); }
 });
 
@@ -228,12 +243,117 @@ test('a code issued to one player cannot verify another', () => {
   clearWallTables();
   const { wb, session } = harness();
   try {
-    wb.handleChat(USER, session, 'Notch: verify');
-    const code = wb.users.get(USER).pendingCodes.get('notch').code;
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('notch');
 
     wb.handleChat(USER, session, `Steve: verify ${code}`);
     assert.equal(db.getWallPlayer.get(USER, 'steve'), undefined, 'steve must not be verified');
-    assert.ok(db.getWallPlayer.get(USER, 'notch') === undefined, 'notch is not verified either');
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined, 'notch has not confirmed yet');
+  } finally { wb.stopAll(); }
+});
+
+test('a wrong password issues no code and does not verify', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    wb.handleChat(USER, session, 'Notch: verify hunter2');
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined);
+    assert.equal(wb.users.get(USER).pendingCodes.has('notch'), false, 'no code for a bad password');
+  } finally { wb.stopAll(); }
+});
+
+test('a wrong code does not verify', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('notch');
+    const wrong = code === '000000' ? '111111' : '000000';
+
+    wb.handleChat(USER, session, `Notch: verify ${wrong}`);
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined);
+  } finally { wb.stopAll(); }
+});
+
+test('the password is case-sensitive and ignores surrounding whitespace', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    wb.handleChat(USER, session, 'Notch: verify TURTLES');
+    assert.equal(wb.users.get(USER).pendingCodes.has('notch'), false, 'wrong case must not pass');
+
+    wb.handleChat(USER, session, 'Steve: verify   turtles  ');
+    assert.ok(wb.users.get(USER).pendingCodes.has('steve'), 'padding should be trimmed');
+  } finally { wb.stopAll(); }
+});
+
+test('an all-digit password is not mistaken for a code', () => {
+  clearWallTables();
+  const { wb, session } = harness({ wall_verify_password: '123456' });
+  try {
+    wb.handleChat(USER, session, 'Notch: verify 123456');
+    const pending = wb.users.get(USER).pendingCodes.get('notch');
+    assert.ok(pending, 'a six-digit password should still issue a code');
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined, 'and must not verify outright');
+
+    wb.handleChat(USER, session, `Notch: verify ${pending.code}`);
+    assert.equal(db.getWallPlayer.get(USER, 'notch').verified, 1);
+  } finally { wb.stopAll(); }
+});
+
+test('with no password set, self-verification fails shut', () => {
+  clearWallTables();
+  const { wb, session } = harness({ wall_verify_password: '' });
+  try {
+    wb.handleChat(USER, session, 'Notch: verify');
+    wb.handleChat(USER, session, 'Notch: verify anything');
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined,
+      'a blank password must close self-verification, not open it to everyone');
+  } finally { wb.stopAll(); }
+});
+
+test('wrong guesses are rate limited', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    for (let i = 0; i < 10; i++) wb.handleChat(USER, session, `Notch: verify guess${i}`);
+    const attempts = wb.users.get(USER).verifyAttempts.get('notch');
+    assert.equal(attempts.length, 5, 'should stop recording after the hourly cap');
+
+    // Locked out even with the correct password once the cap is hit — no code is issued.
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    assert.equal(wb.users.get(USER).pendingCodes.has('notch'), false);
+    assert.equal(db.getWallPlayer.get(USER, 'notch'), undefined);
+  } finally { wb.stopAll(); }
+});
+
+test('a successful verification clears the attempt counter', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    for (let i = 0; i < 3; i++) wb.handleChat(USER, session, `Notch: verify guess${i}`);
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('notch');
+    wb.handleChat(USER, session, `Notch: verify ${code}`);
+
+    assert.equal(db.getWallPlayer.get(USER, 'notch').verified, 1);
+    assert.equal(wb.users.get(USER).verifyAttempts.has('notch'), false,
+      'earlier fumbles should not count against them afterwards');
+  } finally { wb.stopAll(); }
+});
+
+test('asking how to verify does not spend an attempt', () => {
+  clearWallTables();
+  const { wb, session } = harness();
+  try {
+    for (let i = 0; i < 5; i++) wb.handleChat(USER, session, 'Notch: verify');
+    assert.equal(wb.users.get(USER).verifyAttempts.get('notch'), undefined,
+      'a bare "verify" is a help request, not a guess');
+
+    wb.handleChat(USER, session, 'Notch: verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('notch');
+    wb.handleChat(USER, session, `Notch: verify ${code}`);
+    assert.ok(db.getWallPlayer.get(USER, 'notch')?.verified);
   } finally { wb.stopAll(); }
 });
 
@@ -270,11 +390,12 @@ test('DM mode end to end: verify by whisper, then log a check by whisper', () =>
     wb.handleChat(USER, session, '[captunnel] [alienplanet] [Member] wzul: walls');
     assert.deepEqual(db.allWallCheckers.all(USER), [], 'public chat must not count in DM mode');
 
-    // Verify over whisper.
-    wb.handleChat(USER, session, '[captunnel] [alienplanet] [wzul -> me] verify');
-    const pending = wb.users.get(USER).pendingCodes.get('wzul');
-    assert.ok(pending, 'expected a pending code for wzul');
-    wb.handleChat(USER, session, `[captunnel] [alienplanet] [wzul -> me] verify ${pending.code}`);
+    // Verify over whisper: password first, then the code it hands back.
+    wb.handleChat(USER, session, '[captunnel] [alienplanet] [wzul -> me] verify turtles');
+    const { code } = wb.users.get(USER).pendingCodes.get('wzul');
+    assert.equal(db.getWallPlayer.get(USER, 'wzul'), undefined, 'password alone is not enough');
+
+    wb.handleChat(USER, session, `[captunnel] [alienplanet] [wzul -> me] verify ${code}`);
     assert.equal(db.getWallPlayer.get(USER, 'wzul').verified, 1);
 
     // Now a whispered trigger counts.
@@ -328,6 +449,29 @@ test('resetWallStats zeroes the scoreboard but keeps the roster', () => {
   assert.equal(db.getWallState.get(USER).total_checks, 0);
   assert.equal(db.listWallPlayers.all(USER).length, 1, 'the roster must survive a reset');
   assert.equal(db.getWallPlayer.get(USER, 'notch').verified, 1);
+});
+
+// ---- password redaction in the console ----
+
+test('the verify password is redacted from console output', async () => {
+  const { default: BotSession } = await import('../server/bots/BotSession.js');
+  const mk = (password) => new BotSession({
+    userId: USER,
+    account: { id: 'a', username: 'wallbot', auth_type: 'offline' },
+    settings: { wall_verify_password: password },
+    emit() {},
+  });
+
+  const line = '[captunnel] [alienplanet] [wzul -> me] verify turtles';
+  assert.equal(mk('turtles')._redact(line),
+    '[captunnel] [alienplanet] [wzul -> me] verify ***');
+  // Every occurrence, not just the first.
+  assert.equal(mk('turtles')._redact('turtles and turtles'), '*** and ***');
+  // No password configured: nothing to hide, line passes through untouched.
+  assert.equal(mk('')._redact(line), line);
+  // A password containing regex metacharacters must not blow up or mangle the line.
+  assert.equal(mk('a.*b')._redact('say a.*b now'), 'say *** now');
+  assert.equal(mk('a.*b')._redact('say aXXb now'), 'say aXXb now');
 });
 
 test('normalizePlayer folds casing so one player cannot occupy two rows', () => {

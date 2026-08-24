@@ -87,6 +87,16 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - The bot's outgoing whispers render as `[me -> player]`, the mirror of the `[player -> me]` DM
   pattern, so they can't parse as inbound and loop. Don't "improve" that regex to match both
   directions.
+- Self-verification is two steps: `verify <wall_verify_password>` issues a 6-digit code with a
+  15-minute TTL (`CODE_TTL_MS`), then `verify <code>` confirms. `_handleVerify` checks the pending
+  code **before** the password, so a password that happens to be six digits still can't be read as
+  a code. Codes live in memory (`pendingCodes`), keyed by player, so a restart drops them.
+- A **blank password closes** self-verification rather than opening it — `_handleVerify` fails shut
+  on purpose, so don't "fix" the empty case by letting it through. Wrong guesses are rate-limited
+  per player and never logged verbatim.
+- `BotSession#_redact` strips the verify password out of console lines before they reach the
+  panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
+  it — keep that asymmetry if you touch the `messagestr` handler.
 
 ## Conventions
 
