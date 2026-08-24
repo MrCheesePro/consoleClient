@@ -46,8 +46,33 @@ async function showApp() {
   renderLeaderboard();
   renderWallBot();
   updateAccountForm();
+  routeFromHash();
   connectWs();
 }
+
+// ===== View routing =====
+// Both views live in the same document; only their visibility changes, so one WebSocket and
+// one copy of the render code serve both. The hash is the single source of truth for which
+// view is active — tabs set it, and the hashchange handler does the switching.
+const VIEWS = ['bots', 'wall'];
+
+function showView(name) {
+  const active = VIEWS.includes(name) ? name : 'bots';
+  for (const view of VIEWS) $(`view-${view}`).classList.toggle('hidden', view !== active);
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.setAttribute('aria-selected', tab.dataset.view === active ? 'true' : 'false');
+  });
+}
+
+function routeFromHash() { showView(location.hash.replace(/^#/, '')); }
+
+window.addEventListener('hashchange', routeFromHash);
+document.querySelectorAll('.tab').forEach((tab) => {
+  // Setting the hash fires hashchange, which switches the view — and makes the browser's
+  // back button move between views for free. Both views get an explicit hash: assigning an
+  // empty string doesn't reliably fire hashchange, so "#bots" is used rather than clearing it.
+  tab.onclick = () => { location.hash = tab.dataset.view; };
+});
 
 // ===== Auth actions =====
 $('auth-submit').onclick = unlock;

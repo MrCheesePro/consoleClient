@@ -45,20 +45,43 @@ body {
 .auth-actions { display: flex; gap: 10px; margin-top: 20px; }
 .auth-actions .btn { flex: 1; }
 
-/* ---------- App layout ---------- */
+/* ---------- App layout ----------
+   .app is a column (nav + one visible view); each .view carries its own grid, so the two
+   views can differ in column count. */
 .app {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   max-width: 1500px;
   margin: 0 auto;
   padding: 36px 48px;
   height: 100vh;
 }
+.view { display: grid; gap: 48px; flex: 1; min-height: 0; }
+.view-bots { grid-template-columns: 1fr 1fr 1fr; }
+.view-wall { grid-template-columns: 1fr 1fr; }
+
+/* ---------- View tabs ---------- */
+.tabs { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.tabs-spacer { flex: 1; }
+.tabs-user { color: var(--text-dim); font-size: 13px; }
+.tab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 7px 16px;
+}
+.tab:hover { color: var(--text); background: var(--pill); }
+.tab[aria-selected="true"] { color: var(--text); background: var(--pill); border-color: var(--border); }
+
 /* min-height:0 lets flex children shrink so their overflow:auto can kick in;
    overflow-y:auto is a safety net for the (short) settings column on tiny screens. */
 .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
 .panel-title { font-size: 34px; font-weight: 700; margin: 0 0 28px; letter-spacing: -0.5px; }
+.panel-subtitle { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); margin: 28px 0 16px; }
 
 /* ---------- Inputs ---------- */
 .field-label, .settings-label { color: var(--text); font-size: 15px; }
@@ -299,7 +322,8 @@ body {
 /* ---------- Responsive ---------- */
 @media (max-width: 1000px) {
   /* Stacked layout scrolls the whole page instead of each panel filling the viewport. */
-  .app { grid-template-columns: 1fr; gap: 40px; height: auto; min-height: 100vh; }
+  .app { height: auto; min-height: 100vh; }
+  .view, .view-bots, .view-wall { grid-template-columns: 1fr; gap: 40px; }
   .panel { overflow-y: visible; }
   .account-list { min-height: 300px; }
   .console-output { min-height: 360px; max-height: 60vh; }
