@@ -222,6 +222,12 @@ Environment variables:
 | `MAX_BOTS_PER_USER` | `20` | concurrent-bot cap |
 | `NODE_ENV` | — | `production` enables secure cookies |
 
+## Running it on a server
+
+[SETUP.md](SETUP.md) is the day-to-day runbook: deploying an update, restarting, health checks,
+the Node version trap, timezone, backups, and the proxy pool.
+[DEPLOY.md](DEPLOY.md) covers first-time setup.
+
 ## Hosting it publicly
 
 See [DEPLOY.md](DEPLOY.md) for a full walkthrough of putting the panel on a VPS behind
