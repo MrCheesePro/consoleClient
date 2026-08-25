@@ -106,8 +106,20 @@ echo "direct" >> "$POOL_FILE"   # the VPS primary IP is a valid slot too (3 acco
 
 port=$BASE_PORT
 for ip in "${IP_LIST[@]}"; do
-  if ! ip -4 addr show | grep -qw "$ip"; then
-    echo "!! WARNING: $ip is NOT on any interface. Add it via netplan first (see header)."
+  # Fatal, not a warning. microsocks would start happily and then fail to bind, leaving a
+  # service that looks healthy in systemctl but sends every connection out of the wrong IP —
+  # which is exactly the thing this script exists to prevent.
+  if ! ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1 | grep -qx "$ip"; then
+    echo
+    echo "!! $ip is NOT on any interface — refusing to build a proxy that cannot bind."
+    echo
+    echo "   Most likely 'netplan try' rolled back: it reverts after 120s unless you press"
+    echo "   Enter to confirm. Check the address is configured, then re-apply:"
+    echo "     cat /etc/netplan/99-extra-ips.yaml"
+    echo "     sudo netplan apply          # the YAML already applied cleanly once"
+    echo "     ip -4 addr show             # $ip must be listed"
+    echo
+    exit 1
   fi
 
   svc="microsocks-${port}"
