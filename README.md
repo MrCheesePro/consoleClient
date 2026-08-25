@@ -110,7 +110,12 @@ Minutes Unchecked: **{minutes}**
 Last Checker: **{player}** (Total Checks: {checks})
 ```
 
-Raid alerts reuse their chat text as the embed body.
+**Raid alerts** post their own embed: a TNT icon, the headline *WE ARE GETTING RAIDED!*, a bold
+call to action (*Raid Discord body*, default "Check walls immediately and get online."), when the
+alert started, and a **time since alert** that climbs with each repeat. Clearing the alert posts
+how long it lasted.
+
+**While a raid alert is running, wall reminders stop**, and resume once it's turned off.
 
 **Checks get their own log channel.** Turn on *Checks to a logs channel* with a webhook, and every
 recorded check posts a log embed there instead: the player's head and name, the time the walls

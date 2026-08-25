@@ -28,6 +28,9 @@ export const CHECK_DEFAULT = 'Walls checked by {player} [{checks}]';
 export const DISCORD_REMINDER_DEFAULT =
   'Minutes Unchecked: **{minutes}**\nLast Checker: **{player}** (Total Checks: {checks})';
 
+// Body of the Discord embed for a raid alert.
+export const DISCORD_RAID_DEFAULT = 'Check walls immediately and get online.';
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -86,6 +89,7 @@ db.exec(`
     raid_trigger          TEXT    NOT NULL DEFAULT 'weewoo, raid, raided',
     raid_off_trigger      TEXT    NOT NULL DEFAULT 'weeoff, raidoff',
     raid_message          TEXT    NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE',
+    raid_discord_message  TEXT    NOT NULL DEFAULT '${DISCORD_RAID_DEFAULT}',
     raid_delay_ms         INTEGER NOT NULL DEFAULT 15000,
     raid_to_discord       INTEGER NOT NULL DEFAULT 0,
     raid_discord_webhook  TEXT    NOT NULL DEFAULT '',
@@ -156,6 +160,7 @@ db.exec(`
   addColumn('raid_trigger', `raid_trigger TEXT NOT NULL DEFAULT 'weewoo, raid, raided'`);
   addColumn('raid_off_trigger', `raid_off_trigger TEXT NOT NULL DEFAULT 'weeoff, raidoff'`);
   addColumn('raid_message', `raid_message TEXT NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE'`);
+  addColumn('raid_discord_message', `raid_discord_message TEXT NOT NULL DEFAULT '${DISCORD_RAID_DEFAULT}'`);
   addColumn('raid_delay_ms', `raid_delay_ms INTEGER NOT NULL DEFAULT 15000`);
   addColumn('raid_to_discord', `raid_to_discord INTEGER NOT NULL DEFAULT 0`);
   addColumn('raid_discord_webhook', `raid_discord_webhook TEXT NOT NULL DEFAULT ''`);
@@ -251,7 +256,8 @@ const SETTINGS_FIELDS = [
   'wall_chat_pattern', 'wall_msg_command', 'wall_verify_password',
   'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
   'wall_quiet_start', 'wall_quiet_end',
-  'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_delay_ms',
+  'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_discord_message',
+  'raid_delay_ms',
   'raid_to_discord', 'raid_discord_webhook',
   'check_to_discord', 'check_discord_webhook',
 ];

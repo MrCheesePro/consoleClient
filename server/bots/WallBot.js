@@ -3,7 +3,7 @@ import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker,
-  CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT,
+  CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
 } from '../db/db.js';
 
 // Discord embed accent colours, as the integers the webhook API expects.
@@ -15,6 +15,11 @@ const COLOR_LOG = 0x22D3EE;   // cyan — the check log
 // Player head for the log embed's author line. Discord fetches this itself, so the player's name
 // reaches a third-party skin service rather than us calling out. Blank the constant to drop it.
 const HEAD_URL = (player) => `https://mc-heads.net/avatar/${encodeURIComponent(player)}/64`;
+
+// MHF_TNT is one of Mojang's stock heads, so the same skin service renders a TNT block —
+// no second image host to depend on.
+const TNT_ICON = HEAD_URL('MHF_TNT');
+const RAID_TITLE = 'WE ARE GETTING RAIDED!';
 
 const TICK_MS = 30 * 1000;             // how often the reminder loop wakes up
 const CHECK_COOLDOWN_MS = 60 * 1000;   // per-player cooldown between counted checks
@@ -221,6 +226,7 @@ export default class WallBot {
       lastCheckAt: row?.last_check_at || 0,
       totalChecks: row?.total_checks || 0,
       lastReminderAt: 0,         // when we last spoke, kept apart from lastCheckAt on purpose
+      raidStartedAt: 0,          // when the current raid alert began, for "time since alert"
       raidTimer: null,
       cooldowns: new Map(),      // player -> ts of last counted check
       notices: new Map(),        // player -> ts of last "please verify" reply
@@ -492,13 +498,36 @@ export default class WallBot {
       return;
     }
     state.raidActive = true;
+    state.raidStartedAt = Date.now();
     const delay = Math.max(3000, Number(settings.raid_delay_ms) || 15000);
-    const message = settings.raid_message || 'RAID ALERT - DEFEND THE BASE';
-    const raidEmbed = { embed: { title: 'Raid Alert', color: COLOR_ALERT }, channel: 'raid' };
-    this._send(userId, message, raidEmbed);
-    state.raidTimer = setInterval(() => this._send(userId, message, raidEmbed), delay);
+    // Rebuilt on every repeat, not captured once — otherwise "time since alert" would freeze at
+    // 0s and every repost would carry the opening timestamp.
+    this._sendRaidAlert(userId);
+    state.raidTimer = setInterval(() => this._sendRaidAlert(userId), delay);
     this._console(userId, `Raid alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
+  }
+
+  /** One raid alert: in-game text plus the Discord embed, with the elapsed time refreshed. */
+  _sendRaidAlert(userId) {
+    const settings = getSettings.get(userId);
+    const state = this._stateFor(userId);
+    const startedAt = state.raidStartedAt || Date.now();
+    const message = settings.raid_message || 'RAID ALERT - DEFEND THE BASE';
+
+    this._send(userId, message, {
+      channel: 'raid',
+      embed: {
+        color: COLOR_ALERT,
+        author: { name: RAID_TITLE, icon_url: TNT_ICON },
+        description: `**${settings.raid_discord_message || DISCORD_RAID_DEFAULT}**`,
+        fields: [
+          { name: 'Alert started', value: `\`${formatClock(startedAt)}\``, inline: false },
+          { name: 'Time since alert', value: `\`${formatDuration(Date.now() - startedAt)}\``, inline: true },
+        ],
+        footer: { text: this.resolveSession(userId)?.account?.username || 'wallbot' },
+      },
+    });
   }
 
   _endRaid(userId, byPlayer) {
@@ -507,12 +536,21 @@ export default class WallBot {
       if (byPlayer) this._whisper(userId, byPlayer, 'No raid alert is active.');
       return;
     }
+    const lasted = state.raidStartedAt ? Date.now() - state.raidStartedAt : 0;
     state.raidActive = false;
+    state.raidStartedAt = 0;
     clearInterval(state.raidTimer);
     state.raidTimer = null;
     this._send(userId, 'Raid alert cleared.', {
       channel: 'raid',
-      embed: { title: 'Raid Cleared', color: COLOR_MUTED },
+      embed: {
+        color: COLOR_MUTED,
+        author: { name: 'Raid alert cleared.', icon_url: TNT_ICON },
+        fields: [
+          { name: 'Alert lasted', value: `\`${formatDuration(lasted)}\``, inline: true },
+        ],
+        footer: { text: this.resolveSession(userId)?.account?.username || 'wallbot' },
+      },
     });
     this._console(userId, `Raid alert stopped${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);

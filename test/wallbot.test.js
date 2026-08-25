@@ -895,6 +895,115 @@ test('checks fall back to the wall webhook when no logs channel is set', async (
   } finally { wb.stopAll(); }
 });
 
+// ---- raid alert embed ----
+
+function raidHarness(overrides = {}) {
+  db.updateSettings(USER, {
+    wall_enabled: 1, raid_enabled: 1, wall_to_minecraft: 0,
+    wall_to_discord: 0,
+    raid_to_discord: 1, raid_discord_webhook: 'https://discord.test/raid',
+    raid_message: 'RAID ALERT - DEFEND THE BASE',
+    raid_discord_message: 'Check walls immediately and get online.',
+    raid_delay_ms: 3000,
+    ...overrides,
+  });
+  const session = { account: { id: 'a', username: 'captunnel' }, bot: { username: 'captunnel' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  return { wb, session };
+}
+
+test('a raid alert posts a TNT embed with the headline and elapsed time', async () => {
+  clearWallTables();
+  const { wb } = raidHarness();
+  try {
+    const posts = await capturePost(async () => {
+      wb._beginRaid(USER, db.getSettings.get(USER), null);
+    });
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].url, 'https://discord.test/raid');
+
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.author.name, 'WE ARE GETTING RAIDED!');
+    assert.match(embed.author.icon_url, /MHF_TNT/, 'TNT block icon');
+    assert.equal(embed.description, '**Check walls immediately and get online.**');
+    assert.equal(embed.color, 0xED4245);
+    assert.equal(embed.footer.text, 'captunnel');
+
+    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
+    assert.match(byName['Alert started'], /^`\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}`$/);
+    assert.equal(byName['Time since alert'], '`0s`');
+    assert.equal(byName['Time since last check'], undefined, 'that field belongs to check logs');
+  } finally { wb.stopAll(); }
+});
+
+test('time since alert climbs on each repeat instead of freezing', async () => {
+  clearWallTables();
+  const { wb } = raidHarness();
+  try {
+    const posts = await capturePost(async () => {
+      wb._beginRaid(USER, db.getSettings.get(USER), null);
+      // Age the alert, then fire the repeat the interval would have fired.
+      wb._stateFor(USER).raidStartedAt = Date.now() - 95 * 1000;
+      wb._sendRaidAlert(USER);
+    });
+
+    const elapsed = posts.map((p) => Object.fromEntries(
+      p.body.embeds[0].fields.map((f) => [f.name, f.value]),
+    )['Time since alert']);
+    assert.deepEqual(elapsed, ['`0s`', '`1m 35s`']);
+  } finally { wb.stopAll(); }
+});
+
+test('clearing a raid reports how long it lasted', async () => {
+  clearWallTables();
+  const { wb } = raidHarness();
+  try {
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+    wb._stateFor(USER).raidStartedAt = Date.now() - 42 * 1000;
+
+    const posts = await capturePost(async () => { wb._endRaid(USER, null); });
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.color, 0x99AAB5);
+    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
+    assert.equal(byName['Alert lasted'], '`42s`');
+    assert.equal(wb._stateFor(USER).raidStartedAt, 0, 'the clock resets for the next raid');
+  } finally { wb.stopAll(); }
+});
+
+test('wall reminders pause while a raid runs and resume once cleared', () => {
+  clearWallTables();
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1, raid_enabled: 1,
+    wall_to_minecraft: 1, wall_to_discord: 0, raid_to_discord: 0,
+    wall_interval_ms: 30000, wall_quiet_start: '', wall_quiet_end: '',
+    wall_reminder_message: 'REMINDER',
+  });
+  const session = { account: { id: 'a', username: 'captunnel' }, bot: { username: 'captunnel' }, status: 'online', sendChat: (m) => sent.push(m) };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const drain = () => {
+    const out = wb.users.get(USER).queue.concat(sent);
+    wb.users.get(USER).queue.length = 0; sent.length = 0;
+    return out.filter((l) => l === 'REMINDER');
+  };
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 60 * 60 * 1000;
+
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+    drain();
+    wb._tick();
+    assert.deepEqual(drain(), [], 'no wall reminder while the raid is up');
+
+    wb._endRaid(USER, null);
+    drain();
+    wb._tick();
+    assert.deepEqual(drain(), ['REMINDER'], 'reminders resume once the raid is cleared');
+  } finally { wb.stopAll(); }
+});
+
 // ---- duration / clock formatting ----
 
 test('formatDuration drops leading zero units', () => {

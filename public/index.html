@@ -283,8 +283,13 @@
                   <label class="settings-label">Enable raid alerts</label>
                   <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
 
-                  <label class="settings-label">Raid message</label>
+                  <label class="settings-label">Raid message<br>
+                    <span class="label-sub">in-game chat</span></label>
                   <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
+
+                  <label class="settings-label">Raid Discord body</label>
+                  <input class="text-input" placeholder="Check walls immediately and get online."
+                    data-setting="raid_discord_message" />
 
                   <label class="settings-label">Raid repeat (ms)</label>
                   <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
@@ -305,8 +310,13 @@
 
                 <p class="hint">Triggers accept a comma-separated word list, matched on whole words,
                   or a <code>/regex/</code> literal. Messages are sent exactly as written — start
-                  them with <code>/f c </code> to scope them to faction chat. Reminders pause during
-                  quiet hours and while a raid alert is running.</p>
+                  them with <code>/f c </code> to scope them to faction chat.</p>
+
+                <p class="hint"><strong>While a raid alert is running, wall reminders stop</strong>
+                  and resume when it's turned off. The Discord alert repeats on the interval below
+                  with a TNT icon, the raid headline, and a running <em>time since alert</em>;
+                  clearing it posts how long the alert lasted. Reminders also pause during quiet
+                  hours.</p>
 
                 <p class="hint"><strong>Raid webhook</strong> — leave the toggle off and raid
                   alerts follow the wall bot's Discord settings above. Turn it on with a URL set,
