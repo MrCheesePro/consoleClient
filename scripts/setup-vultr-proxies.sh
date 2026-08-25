@@ -39,8 +39,18 @@ if [[ $EUID -ne 0 ]]; then echo "Run with sudo/root."; exit 1; fi
 # the DHCP-assigned primary. The primary is the one carrying the default route, and it is already
 # covered by the "direct" pool entry, so it must not become a proxy.
 PROXY_USER="${PROXY_USER:-botuser}"
+POOL_FILE="${POOL_FILE:-/root/proxy-pool.txt}"
+
 # Generated rather than hard-coded, so no password ends up committed to the repo. It is written
 # to the pool file (mode 600) at the end, which is where you read it back from.
+#
+# A previous run's password is reused when one exists. Re-running this script is normal — an apt
+# lock or a new IP will send you back through it — and minting a fresh password each time would
+# silently invalidate the pool lines already pasted into the panel.
+if [[ -z "${PROXY_PASS:-}" && -r "$POOL_FILE" ]]; then
+  PROXY_PASS="$(sed -n 's|^socks5://[^:]*:\([^@]*\)@.*|\1|p' "$POOL_FILE" | head -1)"
+  [[ -n "$PROXY_PASS" ]] && echo ">> Reusing the proxy password from $POOL_FILE"
+fi
 PROXY_PASS="${PROXY_PASS:-$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)}"
 BASE_PORT="${BASE_PORT:-1080}"
 # Where the proxies listen. Keep 127.0.0.1 if the PANEL RUNS ON THIS VPS (most secure).
@@ -67,15 +77,27 @@ echo ">> Extra IPs to proxy: ${IP_LIST[*]}"
 # Build + install microsocks if missing.
 if ! command -v microsocks >/dev/null 2>&1; then
   echo ">> Installing microsocks..."
-  apt-get update -y
-  apt-get install -y git build-essential
+  # Only touch apt if something is actually missing. A wedged apt-get (a hung `update` can sit on
+  # the lock for days) shouldn't block a build whose tools are already installed.
+  if command -v git >/dev/null 2>&1 && command -v make >/dev/null 2>&1 && command -v cc >/dev/null 2>&1; then
+    echo ">> git, make and cc already present — skipping apt."
+  else
+    echo ">> Fetching build tools via apt..."
+    if ! apt-get update -y || ! apt-get install -y git build-essential; then
+      echo
+      echo "!! apt failed. Something else may be holding its lock — check with:"
+      echo "     sudo fuser -v /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend"
+      echo "   Install the tools yourself, then re-run this script:"
+      echo "     sudo apt-get install -y git build-essential"
+      exit 1
+    fi
+  fi
   rm -rf /opt/microsocks
   git clone --depth 1 https://github.com/rofl0r/microsocks /opt/microsocks
   make -C /opt/microsocks
   install -m 0755 /opt/microsocks/microsocks /usr/local/bin/microsocks
 fi
 
-POOL_FILE="/root/proxy-pool.txt"
 # The pool lines embed the proxy password, so this file is a secret. Lock it before writing.
 touch "$POOL_FILE"
 chmod 600 "$POOL_FILE"
