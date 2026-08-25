@@ -204,6 +204,16 @@
                     data-setting="wall_reminder_message"
                     placeholder="Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}"></textarea>
 
+                  <label class="settings-label">Check confirmation</label>
+                  <input class="text-input" placeholder="Walls checked by {player} [{checks}]"
+                    data-setting="wall_check_message" />
+
+                  <label class="settings-label">Discord embed body<br>
+                    <span class="label-sub">markdown, reminders only</span></label>
+                  <textarea class="text-input reminder-box" rows="2" spellcheck="false"
+                    data-setting="wall_discord_message"
+                    placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
+
                   <label class="settings-label">Check triggers</label>
                   <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
 
@@ -236,10 +246,17 @@
                   <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
                 </div>
 
-                <p class="hint"><strong>Reminder message</strong> — each line is sent as its own
-                  chat message, 1.5s apart, so you can pair a public call-out with a private
-                  status line. Placeholders: <code>{minutes}</code> since the last check,
-                  <code>{total}</code> checks all-time, <code>{player}</code> who checked last.</p>
+                <p class="hint"><strong>Messages</strong> — each line of a message is sent as its
+                  own chat message, 1.5s apart, so you can pair a public call-out with a private
+                  status line. Placeholders: <code>{minutes}</code> unchecked, <code>{player}</code>
+                  who checked last, <code>{checks}</code> that player's count,
+                  <code>{total}</code> checks all-time.</p>
+
+                <p class="hint"><strong>Discord embed body</strong> — Discord posts arrive as an
+                  embed with a coloured bar, a title and a timestamp. This field is the body of the
+                  reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
+                  than the in-game line. Check confirmations and raid alerts reuse their own chat
+                  text as the body.</p>
 
                 <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
                   trigger only when a player messages the bot privately, so a stray word in public

@@ -20,6 +20,14 @@ db.pragma('foreign_keys = ON');
 export const REMINDER_DEFAULT =
   'Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}';
 
+// Sent in chat when someone logs a check.
+export const CHECK_DEFAULT = 'Walls checked by {player} [{checks}]';
+
+// Body of the Discord embed for a reminder. Discord renders markdown, so this can be richer
+// than the in-game line, which has to stay a single sendable chat message.
+export const DISCORD_REMINDER_DEFAULT =
+  'Minutes Unchecked: **{minutes}**\nLast Checker: **{player}** (Total Checks: {checks})';
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -64,6 +72,8 @@ db.exec(`
     wall_trigger          TEXT    NOT NULL DEFAULT 'check, checked, walls, wall',
     wall_require_verified INTEGER NOT NULL DEFAULT 1,
     wall_reminder_message TEXT    NOT NULL DEFAULT '${REMINDER_DEFAULT}',
+    wall_check_message    TEXT    NOT NULL DEFAULT '${CHECK_DEFAULT}',
+    wall_discord_message  TEXT    NOT NULL DEFAULT '${DISCORD_REMINDER_DEFAULT}',
     wall_chat_pattern     TEXT    NOT NULL DEFAULT '',
     wall_msg_command      TEXT    NOT NULL DEFAULT '/msg',
     wall_verify_password  TEXT    NOT NULL DEFAULT '',
@@ -129,6 +139,8 @@ db.exec(`
   addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT 'check, checked, walls, wall'`);
   addColumn('wall_require_verified', `wall_require_verified INTEGER NOT NULL DEFAULT 1`);
   addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT '${REMINDER_DEFAULT}'`);
+  addColumn('wall_check_message', `wall_check_message TEXT NOT NULL DEFAULT '${CHECK_DEFAULT}'`);
+  addColumn('wall_discord_message', `wall_discord_message TEXT NOT NULL DEFAULT '${DISCORD_REMINDER_DEFAULT}'`);
   addColumn('wall_chat_pattern', `wall_chat_pattern TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_msg_command', `wall_msg_command TEXT NOT NULL DEFAULT '/msg'`);
   addColumn('wall_verify_password', `wall_verify_password TEXT NOT NULL DEFAULT ''`);
@@ -221,7 +233,7 @@ const SETTINGS_FIELDS = [
   'offline_mode', 'spam_message', 'spam_delay_ms', 'spam_enabled', 'proxy_pool',
   'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
   'wall_enabled', 'wall_account', 'wall_interval_ms', 'wall_trigger',
-  'wall_require_verified', 'wall_reminder_message',
+  'wall_require_verified', 'wall_reminder_message', 'wall_check_message', 'wall_discord_message',
   'wall_chat_pattern', 'wall_msg_command', 'wall_verify_password',
   'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
   'wall_quiet_start', 'wall_quiet_end',
@@ -270,7 +282,7 @@ export const topWallCheckers = db.prepare(
 // Who checked most recently. Read from the table rather than tracked in memory so the {player}
 // placeholder still resolves after a restart.
 export const lastWallChecker = db.prepare(
-  `SELECT player FROM wall_stats WHERE user_id = ? ORDER BY last_check DESC LIMIT 1`
+  `SELECT player, checks FROM wall_stats WHERE user_id = ? ORDER BY last_check DESC LIMIT 1`
 );
 export const allWallCheckers = db.prepare(
   `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?

@@ -58,9 +58,23 @@ chat, start the reminder and raid messages themselves with `/f c `.
 Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}
 ```
 
-Placeholders: `{minutes}` since the last check, `{total}` checks all-time, `{player}` who checked
-last (`nobody` until someone has). An unrecognised `{name}` is left in the message untouched
-rather than blanked. Nothing is appended automatically — what you write is what goes out.
+Placeholders, available in every message template:
+
+| Placeholder | Meaning |
+|---|---|
+| `{minutes}` | minutes since the last real check |
+| `{player}` | who checked last (`nobody` until someone has) |
+| `{checks}` | that player's own check count |
+| `{total}` | checks all-time |
+
+An unrecognised `{name}` is left in the message untouched rather than blanked. Nothing is appended
+automatically — what you write is what goes out.
+
+**Check confirmation** is its own template (default `Walls checked by {player} [{checks}]`), sent
+when someone logs a check.
+
+`{minutes}` measures from the last **check**, not the last reminder, so it keeps climbing while
+the walls go unchecked instead of resetting every time the bot speaks.
 
 If you put the template on **several lines**, each line is sent as its own chat message 1.5s
 apart. That is the way to make a `/command` actually run: most servers only treat a message as a
@@ -85,6 +99,18 @@ webhook rather than disappearing.
 
 The URL is a secret — anyone holding it can post to that channel. Treat it like a password, and
 if it leaks, delete the webhook in Discord and make a new one.
+
+Posts arrive as **embeds** — a coloured bar, a bold title, and a rendered timestamp. Reminders are
+red (*Wall Check Alert!*), check confirmations green (*Wall Checked*), raid alerts red, all-clears
+grey. The reminder embed has its own body field so it can use markdown and be richer than the
+in-game line, which has to stay a single sendable chat message:
+
+```
+Minutes Unchecked: **{minutes}**
+Last Checker: **{player}** (Total Checks: {checks})
+```
+
+Confirmations and raid alerts reuse their chat text as the embed body.
 
 ### Quiet hours and timezone
 

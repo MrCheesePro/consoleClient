@@ -571,6 +571,117 @@ test('the reminder no longer has an elapsed-time suffix appended behind the temp
   } finally { wb.stopAll(); }
 });
 
+// ---- reminder cadence vs. elapsed time ----
+
+function tickHarness(overrides = {}) {
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 1, wall_to_discord: 0,
+    wall_interval_ms: 30000, wall_quiet_start: '', wall_quiet_end: '',
+    wall_reminder_message: '{minutes}',
+    ...overrides,
+  });
+  const session = {
+    account: { id: 'acc1', username: 'wallbot' },
+    bot: { username: 'wallbot' },
+    status: 'online',
+    sendChat: (m) => sent.push(m),
+  };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const drain = () => {
+    const out = wb.users.get(USER).queue.concat(sent);
+    wb.users.get(USER).queue.length = 0;
+    sent.length = 0;
+    return out;
+  };
+  return { wb, drain };
+}
+
+test('minutes unchecked keeps climbing across repeated reminders', () => {
+  clearWallTables();
+  const { wb, drain } = tickHarness();
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 60 * 60 * 1000; // an hour since anyone checked
+
+    wb._tick();
+    assert.deepEqual(drain(), ['60'], 'first reminder reports the real elapsed time');
+
+    // Let the repeat interval lapse and fire again. The elapsed figure must not reset.
+    state.lastReminderAt = Date.now() - 31000;
+    wb._tick();
+    assert.deepEqual(drain(), ['60'], 'second reminder still measures from the last real check');
+  } finally { wb.stopAll(); }
+});
+
+test('a reminder does not overwrite the stored last-check time', () => {
+  clearWallTables();
+  const { wb } = tickHarness();
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    const checkedAt = Date.now() - 45 * 60 * 1000;
+    state.lastCheckAt = checkedAt;
+
+    wb._tick();
+    assert.equal(state.lastCheckAt, checkedAt, 'the last-check clock must not move when we speak');
+    assert.ok(state.lastReminderAt > 0, 'the reminder clock is what advances');
+  } finally { wb.stopAll(); }
+});
+
+test('reminders repeat no faster than the interval', () => {
+  clearWallTables();
+  const { wb, drain } = tickHarness();
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 60 * 60 * 1000;
+
+    wb._tick();
+    assert.equal(drain().length, 1);
+    wb._tick(); // immediately again — inside the interval
+    assert.equal(drain().length, 0, 'must not repeat until the interval lapses');
+  } finally { wb.stopAll(); }
+});
+
+test('a real check restarts the reminder cycle', () => {
+  clearWallTables();
+  const { wb } = tickHarness({ wall_require_verified: 0, wall_chat_pattern: 'chat' });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 60 * 60 * 1000;
+    wb._tick();
+    assert.ok(state.lastReminderAt > 0);
+
+    // Must be the same object handleChat will resolve — it compares session identity.
+    wb.handleChat(USER, wb.resolveSession(USER), 'Notch: check');
+    assert.equal(state.lastReminderAt, 0, 'the cycle resets so the next reminder is a fresh one');
+  } finally { wb.stopAll(); }
+});
+
+// ---- check confirmation ----
+
+test('the check confirmation follows its own template', () => {
+  clearWallTables();
+  const { wb, drain } = tickHarness({
+    wall_require_verified: 0,
+    wall_chat_pattern: 'chat',
+    wall_check_message: 'Walls checked by {player} [{checks}]',
+  });
+  try {
+    const session = wb.resolveSession(USER);
+    wb.handleChat(USER, session, 'AceSoft: check');
+    assert.deepEqual(drain(), ['Walls checked by acesoft [1]']);
+
+    // A second check by the same player reports their running count.
+    wb.users.get(USER).cooldowns.clear();
+    wb.handleChat(USER, session, 'AceSoft: check');
+    assert.deepEqual(drain(), ['Walls checked by acesoft [2]']);
+  } finally { wb.stopAll(); }
+});
+
 // ---- Discord routing ----
 
 function discordHarness(overrides) {
@@ -642,6 +753,80 @@ test('a raid still reaches Discord when wall Discord output is switched off', ()
     wb._beginRaid(USER, db.getSettings.get(USER), null);
     assert.equal(posts.length, 1);
     assert.equal(posts[0].webhook, 'https://discord.test/raid');
+  } finally { wb.stopAll(); }
+});
+
+// ---- Discord embed payload ----
+// These stub global fetch rather than _postDiscord, so the JSON actually sent is what's asserted.
+
+async function capturePost(configure) {
+  const posts = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    posts.push({ url, body: JSON.parse(opts.body) });
+    return { ok: true, status: 204 };
+  };
+  try {
+    await configure();
+    // _postDiscord is async and not awaited by _send; let the microtasks settle.
+    await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  return posts;
+}
+
+test('a reminder posts a Discord embed with title, colour, body and timestamp', async () => {
+  clearWallTables();
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 0,
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    wall_interval_ms: 30000, wall_quiet_start: '', wall_quiet_end: '',
+    wall_reminder_message: 'Check Walls',
+    wall_discord_message: 'Minutes Unchecked: **{minutes}**\nLast Checker: **{player}** (Total Checks: {checks})',
+  });
+  db.incWallCheck.run({ user_id: USER, player: 'acesoft', last_check: Date.now() });
+  db.incWallCheck.run({ user_id: USER, player: 'acesoft', last_check: Date.now() });
+
+  const session = { account: { id: 'a', username: 'wallbot' }, bot: { username: 'wallbot' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const posts = await capturePost(async () => {
+      const state = wb._stateFor(USER);
+      state.wallActive = true;
+      state.lastCheckAt = Date.now() - 255 * 60 * 1000;
+      wb._tick();
+    });
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].url, 'https://discord.test/wall');
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.title, 'Wall Check Alert!');
+    assert.equal(embed.color, 0xED4245);
+    assert.equal(embed.description,
+      'Minutes Unchecked: **255**\nLast Checker: **acesoft** (Total Checks: 2)');
+    assert.ok(!Number.isNaN(Date.parse(embed.timestamp)), 'timestamp must be ISO-8601');
+    assert.equal(posts[0].body.content, undefined, 'an embed post carries no plain content');
+  } finally { wb.stopAll(); }
+});
+
+test('a check confirmation posts a green embed', async () => {
+  clearWallTables();
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 0, wall_require_verified: 0, wall_chat_pattern: 'chat',
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    wall_check_message: 'Walls checked by {player} [{checks}]',
+  });
+  const session = { account: { id: 'a', username: 'wallbot' }, bot: { username: 'wallbot' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const posts = await capturePost(async () => {
+      wb.handleChat(USER, session, 'AceSoft: check');
+    });
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.title, 'Wall Checked');
+    assert.equal(embed.color, 0x57F287);
+    assert.equal(embed.description, 'Walls checked by acesoft [1]');
   } finally { wb.stopAll(); }
 });
 

@@ -1,8 +1,14 @@
 import crypto from 'node:crypto';
 import {
-  getSettings, getWallState, upsertWallState, incWallCheck, topWallCheckers,
+  getSettings, getWallState, upsertWallState, incWallCheck, topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker,
+  CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT,
 } from '../db/db.js';
+
+// Discord embed accent colours, as the integers the webhook API expects.
+const COLOR_ALERT = 0xED4245; // red — reminders and raids
+const COLOR_OK = 0x57F287;    // green — a check landed
+const COLOR_MUTED = 0x99AAB5; // grey — an all-clear
 
 const TICK_MS = 30 * 1000;             // how often the reminder loop wakes up
 const CHECK_COOLDOWN_MS = 60 * 1000;   // per-player cooldown between counted checks
@@ -189,6 +195,7 @@ export default class WallBot {
       raidActive: false,
       lastCheckAt: row?.last_check_at || 0,
       totalChecks: row?.total_checks || 0,
+      lastReminderAt: 0,         // when we last spoke, kept apart from lastCheckAt on purpose
       raidTimer: null,
       cooldowns: new Map(),      // player -> ts of last counted check
       notices: new Map(),        // player -> ts of last "please verify" reply
@@ -409,12 +416,17 @@ export default class WallBot {
     state.cooldowns.set(player, now);
     state.totalChecks += 1;
     state.lastCheckAt = now;
+    state.lastReminderAt = 0; // a real check restarts the reminder cycle
     this._persist(userId, state);
 
     if (announce) {
-      const mine = topWallCheckers.all(userId).find((r) => r.player === player);
+      // allWallCheckers, not topWallCheckers — the latter stops at 10 rows, so anyone outside
+      // the leaderboard would have been reported as having a single check.
+      const mine = allWallCheckers.all(userId).find((r) => r.player === player);
       const own = mine ? mine.checks : 1;
-      this._send(userId, `Walls checked by ${player} — ${own} check${own === 1 ? '' : 's'} (${state.totalChecks} total).`);
+      const values = { player, checks: own, total: state.totalChecks, minutes: 0 };
+      const text = fillPlaceholders(settings.wall_check_message || CHECK_DEFAULT, values);
+      this._send(userId, text, { embed: { title: 'Wall Checked', color: COLOR_OK } });
     }
     this.broadcast(userId);
   }
@@ -430,8 +442,9 @@ export default class WallBot {
     state.raidActive = true;
     const delay = Math.max(3000, Number(settings.raid_delay_ms) || 15000);
     const message = settings.raid_message || 'RAID ALERT - DEFEND THE BASE';
-    this._send(userId, message, { channel: 'raid' });
-    state.raidTimer = setInterval(() => this._send(userId, message, { channel: 'raid' }), delay);
+    const raidEmbed = { embed: { title: 'Raid Alert', color: COLOR_ALERT }, channel: 'raid' };
+    this._send(userId, message, raidEmbed);
+    state.raidTimer = setInterval(() => this._send(userId, message, raidEmbed), delay);
     this._console(userId, `Raid alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
@@ -445,7 +458,10 @@ export default class WallBot {
     state.raidActive = false;
     clearInterval(state.raidTimer);
     state.raidTimer = null;
-    this._send(userId, 'Raid alert cleared.', { channel: 'raid' });
+    this._send(userId, 'Raid alert cleared.', {
+      channel: 'raid',
+      embed: { title: 'Raid Cleared', color: COLOR_MUTED },
+    });
     this._console(userId, `Raid alert stopped${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
@@ -460,20 +476,32 @@ export default class WallBot {
       if (isQuietHours(Date.now(), settings.wall_quiet_start, settings.wall_quiet_end)) continue;
 
       const interval = Math.max(30000, Number(settings.wall_interval_ms) || 600000);
-      if (Date.now() - state.lastCheckAt < interval) continue;
+      const now = Date.now();
 
-      // The template owns the whole wording now, including where the elapsed time goes — nothing
-      // is appended behind the operator's back.
-      const elapsed = Math.round((Date.now() - state.lastCheckAt) / 60000);
-      const template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';
-      this._send(userId, fillPlaceholders(template, {
-        minutes: elapsed,
+      // Two separate clocks, deliberately. `lastCheckAt` only ever moves when someone actually
+      // checks, so "minutes unchecked" keeps climbing; `lastReminderAt` controls how often we
+      // repeat ourselves. Folding them together — as this used to — made every reminder report
+      // the interval instead of the real elapsed time, and corrupted the stored last-check time.
+      if (now - state.lastCheckAt < interval) continue;
+      if (state.lastReminderAt && now - state.lastReminderAt < interval) continue;
+
+      const last = lastWallChecker.get(userId);
+      const values = {
+        minutes: Math.round((now - state.lastCheckAt) / 60000),
         total: state.totalChecks,
-        player: lastWallChecker.get(userId)?.player || 'nobody',
-      }));
-      // Reset the clock so reminders repeat on a fixed cadence instead of every tick.
-      state.lastCheckAt = Date.now();
-      this._persist(userId, state);
+        player: last?.player || 'nobody',
+        checks: last?.checks ?? 0,
+      };
+      // The template owns the whole wording — nothing is appended behind the operator's back.
+      const template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';
+      this._send(userId, fillPlaceholders(template, values), {
+        embed: {
+          title: 'Wall Check Alert!',
+          color: COLOR_ALERT,
+          description: fillPlaceholders(settings.wall_discord_message || DISCORD_REMINDER_DEFAULT, values),
+        },
+      });
+      state.lastReminderAt = now;
       this.broadcast(userId);
     }
   }
@@ -506,7 +534,7 @@ export default class WallBot {
    * (say) a public call-out with a private status whisper. The outbound queue still spaces them,
    * so a two-line reminder goes out 1.5s apart rather than as a burst.
    */
-  _send(userId, text, { channel = 'wall' } = {}) {
+  _send(userId, text, { channel = 'wall', embed = null } = {}) {
     const settings = getSettings.get(userId);
     const lines = String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
@@ -523,7 +551,7 @@ export default class WallBot {
     const enabled = useRaid || settings?.wall_to_discord;
     // Discord gets it as one post — line breaks read fine there and it avoids N pings.
     if (enabled && webhook) {
-      this._postDiscord(userId, webhook, lines.join('\n'));
+      this._postDiscord(userId, webhook, lines.join('\n'), embed);
     }
   }
 
@@ -573,12 +601,24 @@ export default class WallBot {
     }, wait);
   }
 
-  async _postDiscord(userId, webhook, text) {
+  async _postDiscord(userId, webhook, text, embed = null) {
+    // An embed gives the message a coloured bar, a bold title and a rendered timestamp. Without
+    // one we fall back to a plain content post, so nothing depends on the embed being supplied.
+    const body = embed
+      ? {
+        embeds: [{
+          title: embed.title,
+          description: embed.description || text,
+          color: embed.color,
+          timestamp: new Date().toISOString(),
+        }],
+      }
+      : { content: text };
     try {
       const res = await fetch(webhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (e) {

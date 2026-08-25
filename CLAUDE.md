@@ -96,7 +96,14 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   per player and never logged verbatim.
 - Quiet hours (`isQuietHours`) read the **Node process's local clock** via `getHours()`. Set `TZ`
   in `.env` to control it; a VPS defaults to UTC. Don't hard-code a zone into the comparison.
-- `WallBot#_send` takes `{ channel: 'wall' | 'raid' }`. Raid output prefers `raid_discord_webhook`
+- **`lastCheckAt` and `lastReminderAt` are separate on purpose.** The first only moves when someone
+  actually checks and is the basis for `{minutes}`; the second only paces how often the bot repeats
+  itself. Collapsing them (as an earlier version did) makes every reminder report the interval
+  instead of the real elapsed time, and corrupts the persisted last-check timestamp that the panel
+  and rail display. Only `lastCheckAt` is persisted.
+- `WallBot#_send` takes `{ channel: 'wall' | 'raid', embed }`. With an `embed` the Discord post is
+  `{embeds:[…]}` with a title, colour and ISO timestamp; without one it falls back to a plain
+  `{content}` post, so the embed is never load-bearing. Raid output prefers `raid_discord_webhook`
   when `raid_to_discord` is on **and** the URL is non-empty, otherwise it falls back to the wall
   webhook — an alert should never silently go nowhere because a field was left blank.
 - `WallBot#_send` splits its text on newlines and sends **one chat message per line** (spaced by
