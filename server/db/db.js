@@ -88,7 +88,9 @@ db.exec(`
     raid_message          TEXT    NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE',
     raid_delay_ms         INTEGER NOT NULL DEFAULT 15000,
     raid_to_discord       INTEGER NOT NULL DEFAULT 0,
-    raid_discord_webhook  TEXT    NOT NULL DEFAULT ''
+    raid_discord_webhook  TEXT    NOT NULL DEFAULT '',
+    check_to_discord      INTEGER NOT NULL DEFAULT 0,
+    check_discord_webhook TEXT    NOT NULL DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -101,10 +103,11 @@ db.exec(`
   -- The player column is always stored lowercased (Minecraft names are case-preserving but
   -- not case-sensitive) so lookups can't miss on casing alone.
   CREATE TABLE IF NOT EXISTS wall_stats (
-    user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    player     TEXT    NOT NULL,
-    checks     INTEGER NOT NULL DEFAULT 0,
-    last_check INTEGER NOT NULL DEFAULT 0,
+    user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player      TEXT    NOT NULL,
+    checks      INTEGER NOT NULL DEFAULT 0,
+    raid_checks INTEGER NOT NULL DEFAULT 0,
+    last_check  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, player)
   );
 
@@ -156,6 +159,17 @@ db.exec(`
   addColumn('raid_delay_ms', `raid_delay_ms INTEGER NOT NULL DEFAULT 15000`);
   addColumn('raid_to_discord', `raid_to_discord INTEGER NOT NULL DEFAULT 0`);
   addColumn('raid_discord_webhook', `raid_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('check_to_discord', `check_to_discord INTEGER NOT NULL DEFAULT 0`);
+  addColumn('check_discord_webhook', `check_discord_webhook TEXT NOT NULL DEFAULT ''`);
+}
+
+// Same problem one table over: CREATE TABLE IF NOT EXISTS won't add raid_checks to a wall_stats
+// table that already exists.
+{
+  const cols = new Set(db.prepare(`PRAGMA table_info(wall_stats)`).all().map((c) => c.name));
+  if (!cols.has('raid_checks')) {
+    db.exec(`ALTER TABLE wall_stats ADD COLUMN raid_checks INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 // Changing a column DEFAULT does not touch rows that already exist, so an install created before
@@ -239,6 +253,7 @@ const SETTINGS_FIELDS = [
   'wall_quiet_start', 'wall_quiet_end',
   'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_delay_ms',
   'raid_to_discord', 'raid_discord_webhook',
+  'check_to_discord', 'check_discord_webhook',
 ];
 
 export function updateSettings(userId, patch) {
@@ -275,17 +290,26 @@ export const incWallCheck = db.prepare(`
   ON CONFLICT(user_id, player) DO UPDATE SET checks = checks + 1, last_check = @last_check
 `);
 
+// A check logged while a raid alert is running counts separately, so the two can be reported
+// apart the way the Discord log embed shows them.
+export const incRaidCheck = db.prepare(`
+  INSERT INTO wall_stats (user_id, player, raid_checks, last_check)
+  VALUES (@user_id, @player, 1, @last_check)
+  ON CONFLICT(user_id, player) DO UPDATE SET raid_checks = raid_checks + 1, last_check = @last_check
+`);
+
 export const topWallCheckers = db.prepare(
-  `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?
+  `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
    ORDER BY checks DESC, player ASC LIMIT 10`
 );
 // Who checked most recently. Read from the table rather than tracked in memory so the {player}
 // placeholder still resolves after a restart.
 export const lastWallChecker = db.prepare(
-  `SELECT player, checks FROM wall_stats WHERE user_id = ? ORDER BY last_check DESC LIMIT 1`
+  `SELECT player, checks, raid_checks FROM wall_stats WHERE user_id = ?
+   ORDER BY last_check DESC LIMIT 1`
 );
 export const allWallCheckers = db.prepare(
-  `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?
+  `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
    ORDER BY checks DESC, player ASC`
 );
 

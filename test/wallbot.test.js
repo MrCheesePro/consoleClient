@@ -11,7 +11,7 @@ process.env.DB_PATH = TMP_DB;
 const db = await import('../server/db/db.js');
 const {
   default: WallBot, parseChatLine, compileTriggers, isQuietHours, normalizePlayer,
-  fillPlaceholders,
+  fillPlaceholders, formatDuration, formatClock,
 } = await import('../server/bots/WallBot.js');
 
 const USER = 'local';
@@ -810,24 +810,104 @@ test('a reminder posts a Discord embed with title, colour, body and timestamp', 
   } finally { wb.stopAll(); }
 });
 
-test('a check confirmation posts a green embed', async () => {
+test('a check posts a log embed to the logs channel', async () => {
   clearWallTables();
   db.updateSettings(USER, {
     wall_enabled: 1, wall_to_minecraft: 0, wall_require_verified: 0, wall_chat_pattern: 'chat',
     wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
-    wall_check_message: 'Walls checked by {player} [{checks}]',
+    check_to_discord: 1, check_discord_webhook: 'https://discord.test/logs',
   });
-  const session = { account: { id: 'a', username: 'wallbot' }, bot: { username: 'wallbot' }, status: 'online', sendChat() {} };
+  const session = { account: { id: 'a', username: 'noobtech' }, bot: { username: 'noobtech' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    // Give them some history and a gap since the previous check.
+    db.incWallCheck.run({ user_id: USER, player: 'zghostx', last_check: Date.now() });
+    const state = wb._stateFor(USER);
+    state.lastCheckAt = Date.now() - ((6 * 3600) + (59 * 60) + 26) * 1000;
+
+    const posts = await capturePost(async () => {
+      wb.handleChat(USER, session, 'zGhostx: check');
+    });
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].url, 'https://discord.test/logs', 'goes to the logs channel, not wall');
+
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.color, 0x22D3EE);
+    assert.equal(embed.author.name, 'zghostx recorded a WALL CHECK.');
+    assert.match(embed.author.icon_url, /mc-heads\.net\/avatar\/zghostx/);
+    assert.equal(embed.footer.text, 'noobtech');
+    assert.ok(!Number.isNaN(Date.parse(embed.timestamp)));
+    assert.equal(embed.description, undefined, 'fields say it all; no duplicate body line');
+
+    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
+    assert.match(byName['Clear at'], /^`\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}`$/);
+    assert.equal(byName['Time since last check'], '`6h 59m 26s`');
+    assert.equal(byName['Raid Checks'], '`0`');
+    assert.equal(byName['Wall Checks'], '`2`');
+  } finally { wb.stopAll(); }
+});
+
+test('a check during a raid is logged as a raid check', async () => {
+  clearWallTables();
+  db.updateSettings(USER, {
+    wall_enabled: 1, raid_enabled: 1, wall_to_minecraft: 0,
+    wall_require_verified: 0, wall_chat_pattern: 'chat',
+    check_to_discord: 1, check_discord_webhook: 'https://discord.test/logs',
+    wall_to_discord: 0,
+  });
+  const session = { account: { id: 'a', username: 'noobtech' }, bot: { username: 'noobtech' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    wb._stateFor(USER).raidActive = true;
+
+    const posts = await capturePost(async () => {
+      wb.handleChat(USER, session, 'zGhostx: check');
+    });
+
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.author.name, 'zghostx recorded a RAID CHECK.');
+    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
+    assert.equal(byName['Raid Checks'], '`1`');
+    assert.equal(byName['Wall Checks'], '`0`', 'the two counters are mutually exclusive');
+
+    const row = db.allWallCheckers.all(USER).find((r) => r.player === 'zghostx');
+    assert.equal(row.raid_checks, 1);
+    assert.equal(row.checks, 0);
+  } finally { wb.stopAll(); }
+});
+
+test('checks fall back to the wall webhook when no logs channel is set', async () => {
+  clearWallTables();
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 0, wall_require_verified: 0, wall_chat_pattern: 'chat',
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    check_to_discord: 0, check_discord_webhook: '',
+  });
+  const session = { account: { id: 'a', username: 'noobtech' }, bot: { username: 'noobtech' }, status: 'online', sendChat() {} };
   const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
   try {
     const posts = await capturePost(async () => {
-      wb.handleChat(USER, session, 'AceSoft: check');
+      wb.handleChat(USER, session, 'zGhostx: check');
     });
-    const embed = posts[0].body.embeds[0];
-    assert.equal(embed.title, 'Wall Checked');
-    assert.equal(embed.color, 0x57F287);
-    assert.equal(embed.description, 'Walls checked by acesoft [1]');
+    assert.equal(posts.length, 1, 'the log must not vanish');
+    assert.equal(posts[0].url, 'https://discord.test/wall');
   } finally { wb.stopAll(); }
+});
+
+// ---- duration / clock formatting ----
+
+test('formatDuration drops leading zero units', () => {
+  assert.equal(formatDuration(((6 * 3600) + (59 * 60) + 26) * 1000), '6h 59m 26s');
+  assert.equal(formatDuration((5 * 60 + 3) * 1000), '5m 3s');
+  assert.equal(formatDuration(9000), '9s');
+  assert.equal(formatDuration(0), '0s');
+  assert.equal(formatDuration(-500), '0s', 'a negative gap must not render as nonsense');
+});
+
+test('formatClock renders zero-padded local time', () => {
+  assert.equal(formatClock(new Date(2026, 6, 14, 14, 45, 37)), '2026/07/14 14:45:37');
+  assert.equal(formatClock(new Date(2026, 0, 5, 9, 8, 7)), '2026/01/05 09:08:07');
 });
 
 // ---- password redaction in the console ----

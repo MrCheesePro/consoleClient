@@ -101,9 +101,15 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   itself. Collapsing them (as an earlier version did) makes every reminder report the interval
   instead of the real elapsed time, and corrupts the persisted last-check timestamp that the panel
   and rail display. Only `lastCheckAt` is persisted.
-- `WallBot#_send` takes `{ channel: 'wall' | 'raid', embed }`. With an `embed` the Discord post is
-  `{embeds:[…]}` with a title, colour and ISO timestamp; without one it falls back to a plain
-  `{content}` post, so the embed is never load-bearing. Raid output prefers `raid_discord_webhook`
+- `WallBot#_send` takes `{ channel: 'wall' | 'raid' | 'check', embed }`. Each channel prefers its
+  own webhook and **falls back to the wall webhook** when its toggle is off or its URL is blank —
+  a message must never vanish because a field was left empty. With an `embed` the post is
+  `{embeds:[…]}`; the caller's object *is* the embed, so `author`/`fields`/`footer` pass straight
+  through and only `timestamp` is forced. No `embed` means a plain `{content}` post, so the embed
+  is never load-bearing.
+- `wall_stats` splits `checks` (wall) from `raid_checks` (logged while a raid was running). They
+  are **mutually exclusive** — one check increments exactly one counter. The leaderboard and
+  `{checks}` rank on `checks`. Raid output prefers `raid_discord_webhook`
   when `raid_to_discord` is on **and** the URL is non-empty, otherwise it falls back to the wall
   webhook — an alert should never silently go nowhere because a field was left blank.
 - `WallBot#_send` splits its text on newlines and sends **one chat message per line** (spaced by

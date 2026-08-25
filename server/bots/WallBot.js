@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
-  getSettings, getWallState, upsertWallState, incWallCheck, topWallCheckers, allWallCheckers,
+  getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
+  topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT,
 } from '../db/db.js';
@@ -9,6 +10,11 @@ import {
 const COLOR_ALERT = 0xED4245; // red — reminders and raids
 const COLOR_OK = 0x57F287;    // green — a check landed
 const COLOR_MUTED = 0x99AAB5; // grey — an all-clear
+const COLOR_LOG = 0x22D3EE;   // cyan — the check log
+
+// Player head for the log embed's author line. Discord fetches this itself, so the player's name
+// reaches a third-party skin service rather than us calling out. Blank the constant to drop it.
+const HEAD_URL = (player) => `https://mc-heads.net/avatar/${encodeURIComponent(player)}/64`;
 
 const TICK_MS = 30 * 1000;             // how often the reminder loop wakes up
 const CHECK_COOLDOWN_MS = 60 * 1000;   // per-player cooldown between counted checks
@@ -145,6 +151,25 @@ export function isQuietHours(now, start, end) {
   const d = now instanceof Date ? now : new Date(now);
   const mins = d.getHours() * 60 + d.getMinutes();
   return s < e ? (mins >= s && mins < e) : (mins >= s || mins < e);
+}
+
+/** "6h 59m 26s" — the largest non-zero unit downward, so short gaps stay readable. */
+export function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(Number(ms) / 1000) || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}h ${m}m ${s}s`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+/** "2026/07/14 14:45:37" in the panel server's timezone — the same clock as quiet hours. */
+export function formatClock(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /** Six-digit confirmation code. randomInt, not Math.random — this is a credential. */
@@ -412,9 +437,14 @@ export default class WallBot {
     const state = this._stateFor(userId);
     const now = Date.now();
 
-    incWallCheck.run({ user_id: userId, player, last_check: now });
+    // A check logged while a raid alert is running is counted as a raid check instead of a wall
+    // check, so the two stay separable in the log embed. They are mutually exclusive: one check
+    // increments one counter.
+    const duringRaid = !!state.raidActive;
+    (duringRaid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, last_check: now });
     state.cooldowns.set(player, now);
     state.totalChecks += 1;
+    const sinceLast = state.lastCheckAt ? now - state.lastCheckAt : 0;
     state.lastCheckAt = now;
     state.lastReminderAt = 0; // a real check restarts the reminder cycle
     this._persist(userId, state);
@@ -422,11 +452,33 @@ export default class WallBot {
     if (announce) {
       // allWallCheckers, not topWallCheckers — the latter stops at 10 rows, so anyone outside
       // the leaderboard would have been reported as having a single check.
-      const mine = allWallCheckers.all(userId).find((r) => r.player === player);
-      const own = mine ? mine.checks : 1;
-      const values = { player, checks: own, total: state.totalChecks, minutes: 0 };
+      const mine = allWallCheckers.all(userId).find((r) => r.player === player) || {};
+      const wallChecks = mine.checks || 0;
+      const raidChecks = mine.raid_checks || 0;
+      const values = {
+        player,
+        checks: duringRaid ? raidChecks : wallChecks,
+        total: state.totalChecks,
+        minutes: Math.round(sinceLast / 60000),
+      };
       const text = fillPlaceholders(settings.wall_check_message || CHECK_DEFAULT, values);
-      this._send(userId, text, { embed: { title: 'Wall Checked', color: COLOR_OK } });
+      this._send(userId, text, {
+        channel: 'check',
+        embed: {
+          color: COLOR_LOG,
+          author: {
+            name: `${player} recorded a ${duringRaid ? 'RAID CHECK' : 'WALL CHECK'}.`,
+            icon_url: HEAD_URL(player),
+          },
+          fields: [
+            { name: 'Clear at', value: `\`${formatClock(now)}\``, inline: false },
+            { name: 'Time since last check', value: `\`${formatDuration(sinceLast)}\``, inline: true },
+            { name: 'Raid Checks', value: `\`${raidChecks}\``, inline: true },
+            { name: 'Wall Checks', value: `\`${wallChecks}\``, inline: true },
+          ],
+          footer: { text: this.resolveSession(userId)?.account?.username || 'wallbot' },
+        },
+      });
     }
     this.broadcast(userId);
   }
@@ -544,11 +596,14 @@ export default class WallBot {
       if (settings?.wall_to_minecraft) this._enqueue(userId, line, line);
     }
 
-    // Raid alerts can go to their own channel. If no raid webhook is configured they fall back
-    // to the wall routing, so turning the raid webhook off never silently drops the alert.
+    // Raid alerts and check logs can each go to their own channel. Without a webhook of their own
+    // they fall back to the wall routing, so an unfilled field never silently drops a message.
     const useRaid = channel === 'raid' && settings?.raid_to_discord && settings.raid_discord_webhook;
-    const webhook = useRaid ? settings.raid_discord_webhook : settings?.wall_discord_webhook;
-    const enabled = useRaid || settings?.wall_to_discord;
+    const useCheck = channel === 'check' && settings?.check_to_discord && settings.check_discord_webhook;
+    const webhook = useRaid ? settings.raid_discord_webhook
+      : useCheck ? settings.check_discord_webhook
+        : settings?.wall_discord_webhook;
+    const enabled = useRaid || useCheck || settings?.wall_to_discord;
     // Discord gets it as one post — line breaks read fine there and it avoids N pings.
     if (enabled && webhook) {
       this._postDiscord(userId, webhook, lines.join('\n'), embed);
@@ -604,16 +659,18 @@ export default class WallBot {
   async _postDiscord(userId, webhook, text, embed = null) {
     // An embed gives the message a coloured bar, a bold title and a rendered timestamp. Without
     // one we fall back to a plain content post, so nothing depends on the embed being supplied.
-    const body = embed
-      ? {
-        embeds: [{
-          title: embed.title,
-          description: embed.description || text,
-          color: embed.color,
-          timestamp: new Date().toISOString(),
-        }],
-      }
-      : { content: text };
+    let body;
+    if (embed) {
+      // The caller's object is the embed. Anything Discord accepts (author, fields, footer…)
+      // passes straight through; only the timestamp is always ours.
+      const built = { timestamp: new Date().toISOString(), ...embed };
+      // Fall back to the chat text as the body, but not when the embed carries its own fields —
+      // those already say everything, and a duplicate line above them just looks like a bug.
+      if (built.description === undefined && !built.fields) built.description = text;
+      body = { embeds: [built] };
+    } else {
+      body = { content: text };
+    }
     try {
       const res = await fetch(webhook, {
         method: 'POST',

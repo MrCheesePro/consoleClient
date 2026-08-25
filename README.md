@@ -110,7 +110,26 @@ Minutes Unchecked: **{minutes}**
 Last Checker: **{player}** (Total Checks: {checks})
 ```
 
-Confirmations and raid alerts reuse their chat text as the embed body.
+Raid alerts reuse their chat text as the embed body.
+
+**Checks get their own log channel.** Turn on *Checks to a logs channel* with a webhook, and every
+recorded check posts a log embed there instead: the player's head and name, the time the walls
+were confirmed clear, how long since the previous check, and their raid/wall counts.
+
+A check logged **while a raid alert is running** counts as a *raid* check rather than a wall
+check — the two counters are mutually exclusive, so they can be reported apart.
+
+There are three independent Discord destinations, each falling back to the wall webhook when its
+own toggle is off or its URL is blank:
+
+| Toggle | Sends | Colour |
+|---|---|---|
+| *Send to Discord* | reminders | red |
+| *Raid to its own Discord* | raid alerts, all-clears | red / grey |
+| *Checks to a logs channel* | check logs | cyan |
+
+The player head in the log embed is fetched **by Discord** from `mc-heads.net`, so the player's
+name reaches that third-party service. The panel itself never calls out.
 
 ### Quiet hours and timezone
 

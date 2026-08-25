@@ -233,6 +233,13 @@
                   <label class="settings-label">Discord webhook URL</label>
                   <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
 
+                  <label class="settings-label">Checks to a logs channel</label>
+                  <button class="toggle" data-setting="check_to_discord" aria-pressed="false"></button>
+
+                  <label class="settings-label">Logs webhook URL</label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
+                    data-setting="check_discord_webhook" />
+
                   <label class="settings-label">Quiet hours start</label>
                   <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
 
@@ -255,8 +262,15 @@
                 <p class="hint"><strong>Discord embed body</strong> — Discord posts arrive as an
                   embed with a coloured bar, a title and a timestamp. This field is the body of the
                   reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
-                  than the in-game line. Check confirmations and raid alerts reuse their own chat
-                  text as the body.</p>
+                  than the in-game line. Raid alerts reuse their own chat text as the body.</p>
+
+                <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
+                  posts a log embed: the player's head and name, when the walls were confirmed
+                  clear, how long since the previous check, and their raid/wall check counts. A
+                  check logged while a raid alert is running counts as a <em>raid</em> check
+                  instead of a wall check. Leave the toggle off and these follow the wall bot's
+                  Discord settings; leave the URL blank and they fall back there too. The player
+                  head is fetched by Discord from <code>mc-heads.net</code>.</p>
 
                 <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
                   trigger only when a player messages the bot privately, so a stray word in public
