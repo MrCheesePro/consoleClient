@@ -197,17 +197,63 @@ socks5://botuser:password@127.0.0.1:1080
 socks5://botuser:password@127.0.0.1:1081
 ```
 
-`direct` is this box's main IP. Extra IPs are bought in the Vultr panel (Settings → IPv4 → Add
-Another IPv4 Address), added to netplan, then served by `scripts/setup-vultr-proxies.sh`, which
-runs one `microsocks` per IP and prints the pool lines.
+`direct` is this box's main IP. To add another slot:
 
-Two things that bite:
+**1. Buy the IP** — Vultr panel → your instance → Settings → IPv4 → *Add Another IPv4 Address*,
+then *Show Details* and note the address **and its netmask**. Vultr may hand out a `/32` in an
+unrelated block rather than a neighbour of your primary, so don't assume `/23`.
 
-- **Add the IPs to netplan with `sudo netplan try`, not `netplan apply`.** `try` reverts after 120
-  seconds if you don't confirm; a YAML slip with `apply` can cost you SSH. Keep Vultr's web console
-  open as the way back in.
-- Vultr's extra IPs sit in the **same `/23` as your main**. A server that range-bans will drop all
-  of them together. Buy one, prove it works for a day, then buy the rest.
+**2. Make the box hold it.** Don't touch `50-cloud-init.yaml` — cloud-init regenerates it on boot
+and your IP silently disappears. Use a file of your own, which netplan merges and cloud-init
+leaves alone:
+
+```bash
+sudo nano /etc/netplan/99-extra-ips.yaml
+```
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    enp1s0:
+      addresses:
+        - 45.32.79.133/32
+```
+
+```bash
+sudo chmod 600 /etc/netplan/99-extra-ips.yaml
+sudo netplan try          # reverts after 120s unless confirmed — safer than `apply`
+ip -4 addr show enp1s0    # the new IP must appear before you continue
+```
+
+Use `netplan try`, never `apply`: a YAML slip with `apply` can cost you SSH. Keep Vultr's web
+console open as the way back in.
+
+**3. Run the proxy script.** Nothing in it needs editing — it detects every global IP that isn't
+the DHCP primary, generates a password, and writes the pool to `/root/proxy-pool.txt` (mode 600):
+
+```bash
+sudo bash scripts/setup-vultr-proxies.sh
+cat /root/proxy-pool.txt
+```
+
+Override any of it if you want: `sudo EXTRA_IPS="1.2.3.4" PROXY_PASS='mine' bash scripts/...`
+
+**4. Prove each proxy leaves from its own IP** before trusting it — this is what catches a bad
+netmask or a bind that isn't taking:
+
+```bash
+curl --socks5 botuser:PASS@127.0.0.1:1080 https://ifconfig.me; echo
+```
+
+**5. Paste the pool lines** into Settings → Proxy Pool, then reconnect the bots.
+
+Worth checking once: `sudo reboot`, then `ip -4 addr show enp1s0` — that proves the IP survives
+cloud-init regenerating its own netplan file, which is the whole reason for the separate `99-`
+file. Better to learn that deliberately than during a raid.
+
+**Before buying several:** extra IPs from one provider can share a subnet, and a server that
+range-bans drops them together. Buy one, run it for a day, then buy the rest.
 
 Verify each proxy leaves from its own IP before trusting it:
 
