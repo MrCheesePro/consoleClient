@@ -895,6 +895,102 @@ test('checks fall back to the wall webhook when no logs channel is set', async (
   } finally { wb.stopAll(); }
 });
 
+// ---- quiet hours ----
+
+// A window that definitely contains "now", and one that definitely doesn't, built from the
+// current local hour so these don't depend on when the suite runs.
+function quietWindows() {
+  const h = new Date().getHours();
+  const pad = (n) => String((n + 24) % 24).padStart(2, '0');
+  return {
+    inside: { start: `${pad(h - 1)}:00`, end: `${pad(h + 2)}:00` },
+    outside: { start: `${pad(h + 3)}:00`, end: `${pad(h + 5)}:00` },
+  };
+}
+
+test('an in-game check is refused during quiet hours', () => {
+  clearWallTables();
+  const { inside } = quietWindows();
+  const { wb, session } = harness({
+    wall_require_verified: 0,
+    wall_quiet_start: inside.start, wall_quiet_end: inside.end,
+  });
+  try {
+    wb.handleChat(USER, session, 'Notch: check');
+    assert.deepEqual(db.allWallCheckers.all(USER), [], 'nothing may be banked during quiet hours');
+  } finally { wb.stopAll(); }
+});
+
+test('the same check counts once quiet hours are over', () => {
+  clearWallTables();
+  const { outside } = quietWindows();
+  const { wb, session } = harness({
+    wall_require_verified: 0,
+    wall_quiet_start: outside.start, wall_quiet_end: outside.end,
+  });
+  try {
+    wb.handleChat(USER, session, 'Notch: check');
+    assert.equal(db.allWallCheckers.all(USER).find((r) => r.player === 'notch').checks, 1);
+  } finally { wb.stopAll(); }
+});
+
+test('the panel button overrides quiet hours', () => {
+  clearWallTables();
+  const { inside } = quietWindows();
+  const { wb } = harness({
+    wall_require_verified: 0,
+    wall_quiet_start: inside.start, wall_quiet_end: inside.end,
+  });
+  try {
+    wb.manualCheck(USER, 'panel');
+    assert.equal(db.allWallCheckers.all(USER).find((r) => r.player === 'panel').checks, 1,
+      'the operator can still record a check by hand');
+  } finally { wb.stopAll(); }
+});
+
+test('the unchecked count restarts when quiet hours lift', () => {
+  clearWallTables();
+  const sent = [];
+  const { inside, outside } = quietWindows();
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 1, wall_to_discord: 0,
+    wall_interval_ms: 30000,
+    wall_reminder_message: '{minutes}',
+    wall_quiet_start: inside.start, wall_quiet_end: inside.end,
+  });
+  const session = { account: { id: 'a', username: 'bot' }, bot: { username: 'bot' }, status: 'online', sendChat: (m) => sent.push(m) };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const drain = () => {
+    const out = wb.users.get(USER).queue.concat(sent);
+    wb.users.get(USER).queue.length = 0; sent.length = 0;
+    return out;
+  };
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 17 * 60 * 60 * 1000; // unchecked overnight
+
+    wb._tick();
+    assert.deepEqual(drain(), [], 'silent inside the window');
+    assert.equal(state.wasQuiet, true);
+
+    // Quiet hours end.
+    db.updateSettings(USER, { wall_quiet_start: outside.start, wall_quiet_end: outside.end });
+    wb._tick();
+    assert.deepEqual(drain(), [], 'the count restarts, so nothing is due yet');
+    assert.ok(state.quietEndedAt > 0, 'the restart point is recorded');
+
+    // A full interval later, the reminder measures from the end of quiet hours, not 17h ago.
+    state.quietEndedAt = Date.now() - 31 * 1000;
+    wb._tick();
+    assert.deepEqual(drain(), ['1'], 'about a minute, not 1020');
+
+    // And the real record of when someone last checked is untouched.
+    assert.ok(Date.now() - state.lastCheckAt > 16 * 60 * 60 * 1000,
+      'lastCheckAt still reflects the genuine last check');
+  } finally { wb.stopAll(); }
+});
+
 // ---- raid alert embed ----
 
 function raidHarness(overrides = {}) {

@@ -226,6 +226,8 @@ export default class WallBot {
       lastCheckAt: row?.last_check_at || 0,
       totalChecks: row?.total_checks || 0,
       lastReminderAt: 0,         // when we last spoke, kept apart from lastCheckAt on purpose
+      wasQuiet: false,           // were we inside the quiet window on the previous tick?
+      quietEndedAt: 0,           // when quiet hours last lifted; restarts the unchecked count
       raidStartedAt: 0,          // when the current raid alert began, for "time since alert"
       raidTimer: null,
       cooldowns: new Map(),      // player -> ts of last counted check
@@ -279,7 +281,11 @@ export default class WallBot {
     this._endRaid(userId, null);
   }
 
-  /** Credit a check from the panel rather than from chat. */
+  /**
+   * Credit a check from the panel rather than from chat. Deliberately not gated by quiet hours:
+   * the panel is the operator, and an override is the point of having a button. In-game triggers
+   * are the ones that get refused.
+   */
   manualCheck(userId, player) {
     const settings = getSettings.get(userId);
     const name = normalizePlayer(player) || 'panel';
@@ -426,6 +432,15 @@ export default class WallBot {
 
   _handleCheckTrigger(userId, settings, player, message) {
     if (!compileTriggers(settings.wall_trigger)(message)) return;
+
+    // Checks don't count during quiet hours — nobody is expected to be walking the walls then,
+    // and letting them bank checks would inflate the leaderboard for hours nobody was watching.
+    // Raid triggers are deliberately NOT gated this way: a raid is an emergency whenever it lands.
+    if (isQuietHours(Date.now(), settings.wall_quiet_start, settings.wall_quiet_end)) {
+      this._notifyOnce(userId, player, 'Wall checks are paused during quiet hours.');
+      return;
+    }
+
     if (!this._requireAuthorized(userId, settings, player)) return;
 
     const state = this._stateFor(userId);
@@ -563,21 +578,34 @@ export default class WallBot {
       if (!state.wallActive || state.raidActive) continue;
       const settings = getSettings.get(userId);
       if (!settings?.wall_enabled) continue;
-      if (isQuietHours(Date.now(), settings.wall_quiet_start, settings.wall_quiet_end)) continue;
+
+      const now = Date.now();
+      if (isQuietHours(now, settings.wall_quiet_start, settings.wall_quiet_end)) {
+        state.wasQuiet = true;
+        continue;
+      }
+      // Coming out of quiet hours restarts the count. Nobody was expected to check overnight,
+      // so carrying that silence forward would open the day with an alarming number.
+      // `lastCheckAt` itself is left alone — it is the real record of when someone last checked,
+      // and the panel reports it as such.
+      if (state.wasQuiet) {
+        state.wasQuiet = false;
+        state.quietEndedAt = now;
+        state.lastReminderAt = 0;
+      }
 
       const interval = Math.max(30000, Number(settings.wall_interval_ms) || 600000);
-      const now = Date.now();
-
-      // Two separate clocks, deliberately. `lastCheckAt` only ever moves when someone actually
-      // checks, so "minutes unchecked" keeps climbing; `lastReminderAt` controls how often we
-      // repeat ourselves. Folding them together — as this used to — made every reminder report
-      // the interval instead of the real elapsed time, and corrupted the stored last-check time.
-      if (now - state.lastCheckAt < interval) continue;
+      // Two separate clocks, deliberately. `countFrom` is what "minutes unchecked" measures —
+      // the last real check, or the end of quiet hours if that came later. `lastReminderAt`
+      // controls how often we repeat ourselves. Folding them together — as this used to — made
+      // every reminder report the interval instead of the real elapsed time.
+      const countFrom = Math.max(state.lastCheckAt, state.quietEndedAt || 0);
+      if (now - countFrom < interval) continue;
       if (state.lastReminderAt && now - state.lastReminderAt < interval) continue;
 
       const last = lastWallChecker.get(userId);
       const values = {
-        minutes: Math.round((now - state.lastCheckAt) / 60000),
+        minutes: Math.round((now - countFrom) / 60000),
         total: state.totalChecks,
         player: last?.player || 'nobody',
         checks: last?.checks ?? 0,
@@ -604,15 +632,20 @@ export default class WallBot {
     return !!(row && row.verified);
   }
 
+  // Tell a player something at most once a minute, so a refused trigger repeated in frustration
+  // doesn't turn into the bot spamming them back.
+  _notifyOnce(userId, player, text) {
+    const state = this._stateFor(userId);
+    const now = Date.now();
+    if (now - (state.notices.get(player) || 0) < NOTICE_COOLDOWN_MS) return;
+    state.notices.set(player, now);
+    this._whisper(userId, player, text);
+  }
+
   // Returns true when the player may proceed; otherwise replies (at most once a minute).
   _requireAuthorized(userId, settings, player) {
     if (this._isAuthorized(userId, settings, player)) return true;
-    const state = this._stateFor(userId);
-    const now = Date.now();
-    if (now - (state.notices.get(player) || 0) >= NOTICE_COOLDOWN_MS) {
-      state.notices.set(player, now);
-      this._whisper(userId, player, 'You are not verified — say "verify" in chat to get a code.');
-    }
+    this._notifyOnce(userId, player, 'You are not verified — say "verify" in chat to get a code.');
     return false;
   }
 

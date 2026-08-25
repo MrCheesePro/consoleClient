@@ -138,6 +138,19 @@ name reaches that third-party service. The panel itself never calls out.
 
 ### Quiet hours and timezone
 
+Inside the quiet window:
+
+- reminders stop;
+- in-game checks are **refused** with a note, rather than counted — nobody is expected to be
+  walking the walls, and banking checks then would inflate the leaderboard for hours nobody was
+  watching;
+- the panel's **Mark checked** button still works, as an operator override;
+- raid alerts and `weewoo` are **never** gated — a raid is an emergency whenever it lands.
+
+When the window lifts, the unchecked count **restarts from zero**, so the first reminder of the
+day isn't a number covering the whole night. The stored last-check time is left untouched, so the
+panel and status rail keep reporting when someone genuinely last checked.
+
 Quiet hours are read on **the panel server's clock**, not your own. A VPS almost always runs UTC,
 so `00:00`–`14:00` would mean UTC unless you say otherwise. Set your zone in `.env`:
 

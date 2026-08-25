@@ -324,7 +324,14 @@
                   routine wall checks. If the toggle is on but the URL is blank, raids fall back to
                   the wall webhook rather than going nowhere.</p>
 
-                <p class="hint"><strong>Quiet hours use the panel server's clock</strong>, not
+                <p class="hint"><strong>Quiet hours</strong> — reminders stop, and in-game checks
+                  are refused with a note rather than counted. When the window lifts, the unchecked
+                  count restarts from zero, so the first message of the day isn't a number covering
+                  the whole night. The panel's <em>Mark checked</em> button still works as an
+                  operator override, and raid alerts are never gated — a raid is an emergency
+                  whenever it lands.</p>
+
+                <p class="hint">Quiet hours use <strong>the panel server's clock</strong>, not
                   yours. A VPS usually runs on UTC — set <code>TZ=America/New_York</code> (or your
                   zone) in <code>.env</code> and restart to make these times local.</p>
               </div>

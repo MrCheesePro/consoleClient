@@ -96,6 +96,11 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   per player and never logged verbatim.
 - Quiet hours (`isQuietHours`) read the **Node process's local clock** via `getHours()`. Set `TZ`
   in `.env` to control it; a VPS defaults to UTC. Don't hard-code a zone into the comparison.
+- Quiet hours suppress reminders **and** refuse in-game check triggers. `manualCheck` (the panel
+  button) is an intentional override, and raid triggers are intentionally never gated.
+- Leaving the quiet window sets `quietEndedAt`, and `{minutes}` measures from
+  `max(lastCheckAt, quietEndedAt)`. `lastCheckAt` is deliberately **not** reset — it is the real
+  record the panel and rail display, so don't "simplify" this by overwriting it.
 - **`lastCheckAt` and `lastReminderAt` are separate on purpose.** The first only moves when someone
   actually checks and is the basis for `{minutes}`; the second only paces how often the bot repeats
   itself. Collapsing them (as an earlier version did) makes every reminder report the interval
