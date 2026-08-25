@@ -198,8 +198,11 @@
                   <label class="settings-label">Reminder interval (ms)</label>
                   <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
 
-                  <label class="settings-label">Reminder message</label>
-                  <input class="text-input" placeholder="Wall check!" data-setting="wall_reminder_message" />
+                  <label class="settings-label">Reminder message<br>
+                    <span class="label-sub">one message per line</span></label>
+                  <textarea class="text-input reminder-box" rows="3" spellcheck="false"
+                    data-setting="wall_reminder_message"
+                    placeholder="Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}"></textarea>
 
                   <label class="settings-label">Check triggers</label>
                   <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
@@ -233,6 +236,11 @@
                   <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
                 </div>
 
+                <p class="hint"><strong>Reminder message</strong> — each line is sent as its own
+                  chat message, 1.5s apart, so you can pair a public call-out with a private
+                  status line. Placeholders: <code>{minutes}</code> since the last check,
+                  <code>{total}</code> checks all-time, <code>{player}</code> who checked last.</p>
+
                 <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
                   trigger only when a player messages the bot privately, so a stray word in public
                   chat can't fire it. <code>chat</code> reads public and faction chat instead.
@@ -255,12 +263,29 @@
 
                   <label class="settings-label">Raid off triggers</label>
                   <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
+
+                  <label class="settings-label">Raid to its own Discord</label>
+                  <button class="toggle" data-setting="raid_to_discord" aria-pressed="false"></button>
+
+                  <label class="settings-label">Raid webhook URL</label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
+                    data-setting="raid_discord_webhook" />
                 </div>
 
                 <p class="hint">Triggers accept a comma-separated word list, matched on whole words,
                   or a <code>/regex/</code> literal. Messages are sent exactly as written — start
                   them with <code>/f c </code> to scope them to faction chat. Reminders pause during
                   quiet hours and while a raid alert is running.</p>
+
+                <p class="hint"><strong>Raid webhook</strong> — leave the toggle off and raid
+                  alerts follow the wall bot's Discord settings above. Turn it on with a URL set,
+                  and raids go to that channel instead, so alarms can live somewhere noisier than
+                  routine wall checks. If the toggle is on but the URL is blank, raids fall back to
+                  the wall webhook rather than going nowhere.</p>
+
+                <p class="hint"><strong>Quiet hours use the panel server's clock</strong>, not
+                  yours. A VPS usually runs on UTC — set <code>TZ=America/New_York</code> (or your
+                  zone) in <code>.env</code> and restart to make these times local.</p>
               </div>
             </section>
           </div>

@@ -16,7 +16,7 @@ const BOOL_KEYS = new Set([
   'show_chat', 'auto_reconnect', 'sneak', 'anti_afk', 'offline_mode', 'spam_enabled',
   'leaderboard_enabled',
   'wall_enabled', 'wall_require_verified', 'wall_to_minecraft', 'wall_to_discord',
-  'raid_enabled',
+  'raid_enabled', 'raid_to_discord',
 ]);
 const INT_KEYS = new Set([
   'login_delay_ms', 'spam_delay_ms', 'wall_interval_ms', 'raid_delay_ms',

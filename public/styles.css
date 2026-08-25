@@ -399,6 +399,12 @@ body {
 .settings-grid .btn-pill,
 .settings-grid .select-input { justify-self: stretch; width: 100%; }
 .proxy-pool { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; resize: vertical; }
+.reminder-box { font-family: var(--mono); font-size: 12px; line-height: 1.6; resize: vertical; }
+/* Multi-line settings labels need to sit at the top of their grid row, not centred against a
+   3-row textarea. */
+.settings-grid:has(.reminder-box) { align-items: center; }
+.settings-grid .reminder-box { align-self: start; }
+.label-sub { color: var(--text-faint); font-size: 11px; font-family: var(--mono); }
 
 /* ---------- Accounts ---------- */
 .account-form { margin-bottom: 16px; }

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   getSettings, getWallState, upsertWallState, incWallCheck, topWallCheckers,
-  listWallPlayers, getWallPlayer, upsertWallPlayer,
+  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker,
 } from '../db/db.js';
 
 const TICK_MS = 30 * 1000;             // how often the reminder loop wakes up
@@ -144,6 +144,16 @@ export function isQuietHours(now, start, end) {
 /** Six-digit confirmation code. randomInt, not Math.random — this is a credential. */
 export function generateCode() {
   return String(crypto.randomInt(100000, 1000000));
+}
+
+/**
+ * Substitute `{name}` placeholders in a message template. An unknown placeholder is left
+ * untouched rather than blanked, so a literal brace in a message survives intact.
+ */
+export function fillPlaceholders(text, values) {
+  return String(text ?? '').replace(/\{(\w+)\}/g, (whole, key) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : whole
+  ));
 }
 
 // ---- the bot ----
@@ -420,8 +430,8 @@ export default class WallBot {
     state.raidActive = true;
     const delay = Math.max(3000, Number(settings.raid_delay_ms) || 15000);
     const message = settings.raid_message || 'RAID ALERT - DEFEND THE BASE';
-    this._send(userId, message);
-    state.raidTimer = setInterval(() => this._send(userId, message), delay);
+    this._send(userId, message, { channel: 'raid' });
+    state.raidTimer = setInterval(() => this._send(userId, message, { channel: 'raid' }), delay);
     this._console(userId, `Raid alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
@@ -435,7 +445,7 @@ export default class WallBot {
     state.raidActive = false;
     clearInterval(state.raidTimer);
     state.raidTimer = null;
-    this._send(userId, 'Raid alert cleared.');
+    this._send(userId, 'Raid alert cleared.', { channel: 'raid' });
     this._console(userId, `Raid alert stopped${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
@@ -452,9 +462,15 @@ export default class WallBot {
       const interval = Math.max(30000, Number(settings.wall_interval_ms) || 600000);
       if (Date.now() - state.lastCheckAt < interval) continue;
 
+      // The template owns the whole wording now, including where the elapsed time goes — nothing
+      // is appended behind the operator's back.
       const elapsed = Math.round((Date.now() - state.lastCheckAt) / 60000);
-      const reminder = settings.wall_reminder_message || 'Wall check!';
-      this._send(userId, `${reminder} (last check ${elapsed}m ago)`);
+      const template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';
+      this._send(userId, fillPlaceholders(template, {
+        minutes: elapsed,
+        total: state.totalChecks,
+        player: lastWallChecker.get(userId)?.player || 'nobody',
+      }));
       // Reset the clock so reminders repeat on a fixed cadence instead of every tick.
       state.lastCheckAt = Date.now();
       this._persist(userId, state);
@@ -484,15 +500,30 @@ export default class WallBot {
 
   // ---- output ----
 
-  /** Broadcast message: Minecraft and/or Discord per the routing toggles, always the console. */
-  _send(userId, text) {
+  /**
+   * Broadcast message: Minecraft and/or Discord per the routing toggles, always the console.
+   * A multi-line message is sent as one chat message per line, so a single reminder can combine
+   * (say) a public call-out with a private status whisper. The outbound queue still spaces them,
+   * so a two-line reminder goes out 1.5s apart rather than as a burst.
+   */
+  _send(userId, text, { channel = 'wall' } = {}) {
     const settings = getSettings.get(userId);
-    this._console(userId, text);
-    if (settings?.wall_to_minecraft) {
-      this._enqueue(userId, text, text);
+    const lines = String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+
+    for (const line of lines) {
+      this._console(userId, line);
+      if (settings?.wall_to_minecraft) this._enqueue(userId, line, line);
     }
-    if (settings?.wall_to_discord && settings.wall_discord_webhook) {
-      this._postDiscord(userId, settings.wall_discord_webhook, text);
+
+    // Raid alerts can go to their own channel. If no raid webhook is configured they fall back
+    // to the wall routing, so turning the raid webhook off never silently drops the alert.
+    const useRaid = channel === 'raid' && settings?.raid_to_discord && settings.raid_discord_webhook;
+    const webhook = useRaid ? settings.raid_discord_webhook : settings?.wall_discord_webhook;
+    const enabled = useRaid || settings?.wall_to_discord;
+    // Discord gets it as one post — line breaks read fine there and it avoids N pings.
+    if (enabled && webhook) {
+      this._postDiscord(userId, webhook, lines.join('\n'));
     }
   }
 

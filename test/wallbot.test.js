@@ -11,6 +11,7 @@ process.env.DB_PATH = TMP_DB;
 const db = await import('../server/db/db.js');
 const {
   default: WallBot, parseChatLine, compileTriggers, isQuietHours, normalizePlayer,
+  fillPlaceholders,
 } = await import('../server/bots/WallBot.js');
 
 const USER = 'local';
@@ -449,6 +450,199 @@ test('resetWallStats zeroes the scoreboard but keeps the roster', () => {
   assert.equal(db.getWallState.get(USER).total_checks, 0);
   assert.equal(db.listWallPlayers.all(USER).length, 1, 'the roster must survive a reset');
   assert.equal(db.getWallPlayer.get(USER, 'notch').verified, 1);
+});
+
+// ---- reminder templates ----
+
+test('fillPlaceholders substitutes known keys and leaves unknown ones alone', () => {
+  const out = fillPlaceholders(
+    'WALLS : {minutes}m since check, {total} total, last {player}, keep {mystery}',
+    { minutes: 12, total: 40, player: 'wzul' },
+  );
+  assert.equal(out, 'WALLS : 12m since check, 40 total, last wzul, keep {mystery}');
+});
+
+test('fillPlaceholders handles a repeated key and a template with none', () => {
+  assert.equal(fillPlaceholders('{minutes}/{minutes}', { minutes: 5 }), '5/5');
+  assert.equal(fillPlaceholders('Check Walls', { minutes: 5 }), 'Check Walls');
+  assert.equal(fillPlaceholders(null, { minutes: 5 }), '');
+});
+
+test('a multi-line reminder sends one chat message per line, with minutes filled in', () => {
+  clearWallTables();
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1,
+    wall_to_minecraft: 1,
+    wall_to_discord: 0,
+    wall_interval_ms: 30000,
+    wall_quiet_start: '',
+    wall_quiet_end: '',
+    wall_reminder_message: 'Check Walls\n/msg captunnel WALLS : Minutes since last checked: {minutes}',
+  });
+  const session = {
+    account: { id: 'acc1', username: 'wallbot' },
+    bot: { username: 'wallbot' },
+    status: 'online',
+    sendChat: (m) => sent.push(m),
+  };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 12 * 60 * 1000; // 12 minutes ago
+
+    wb._tick();
+
+    // _enqueue spaces sends behind a timer, so read the queue plus anything already flushed.
+    const lines = wb.users.get(USER).queue.concat(sent);
+    assert.deepEqual(lines, [
+      'Check Walls',
+      '/msg captunnel WALLS : Minutes since last checked: 12',
+    ]);
+  } finally { wb.stopAll(); }
+});
+
+test('a one-line reminder fills in both {minutes} and {player}', () => {
+  clearWallTables();
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 1, wall_to_discord: 0,
+    wall_interval_ms: 30000, wall_quiet_start: '', wall_quiet_end: '',
+    wall_reminder_message: 'Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}',
+  });
+  // Someone checked, so {player} has a real answer.
+  db.incWallCheck.run({ user_id: USER, player: 'wzul', last_check: Date.now() });
+
+  const session = {
+    account: { id: 'acc1', username: 'wallbot' },
+    bot: { username: 'wallbot' },
+    status: 'online',
+    sendChat: (m) => sent.push(m),
+  };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 7 * 60 * 1000;
+
+    wb._tick();
+    const lines = wb.users.get(USER).queue.concat(sent);
+    assert.deepEqual(lines, [
+      'Check Walls /msg captunnel WALLS : Minutes since last checked: 7 by wzul',
+    ]);
+  } finally { wb.stopAll(); }
+});
+
+test('{player} survives a restart, and reads "nobody" before any check', () => {
+  clearWallTables();
+  // Nothing recorded yet.
+  assert.equal(db.lastWallChecker.get(USER), undefined);
+
+  db.incWallCheck.run({ user_id: USER, player: 'steve', last_check: Date.now() - 5000 });
+  db.incWallCheck.run({ user_id: USER, player: 'wzul', last_check: Date.now() });
+  // Most recent wins, and it comes from the table rather than process memory.
+  assert.equal(db.lastWallChecker.get(USER).player, 'wzul');
+});
+
+test('the reminder no longer has an elapsed-time suffix appended behind the template', () => {
+  clearWallTables();
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 1, wall_to_discord: 0,
+    wall_interval_ms: 30000, wall_quiet_start: '', wall_quiet_end: '',
+    wall_reminder_message: 'Check Walls',
+  });
+  const session = {
+    account: { id: 'acc1', username: 'wallbot' },
+    bot: { username: 'wallbot' },
+    status: 'online',
+    sendChat: (m) => sent.push(m),
+  };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 9 * 60 * 1000;
+
+    wb._tick();
+    const lines = wb.users.get(USER).queue.concat(sent);
+    assert.deepEqual(lines, ['Check Walls'], 'the template is sent verbatim');
+  } finally { wb.stopAll(); }
+});
+
+// ---- Discord routing ----
+
+function discordHarness(overrides) {
+  db.updateSettings(USER, {
+    wall_enabled: 1, raid_enabled: 1,
+    wall_to_minecraft: 0,
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    raid_delay_ms: 3000,
+    raid_message: 'RAID ALERT',
+    ...overrides,
+  });
+  const session = {
+    account: { id: 'acc1', username: 'wallbot' },
+    bot: { username: 'wallbot' },
+    status: 'online',
+    sendChat() {},
+  };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const posts = [];
+  wb._postDiscord = (userId, webhook, text) => { posts.push({ webhook, text }); };
+  return { wb, posts };
+}
+
+test('raid alerts go to their own webhook when one is configured', () => {
+  const { wb, posts } = discordHarness({
+    raid_to_discord: 1, raid_discord_webhook: 'https://discord.test/raid',
+  });
+  try {
+    wb._send(USER, 'routine wall reminder');
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+
+    assert.equal(posts[0].webhook, 'https://discord.test/wall', 'wall traffic uses the wall hook');
+    assert.equal(posts[1].webhook, 'https://discord.test/raid', 'the raid uses the raid hook');
+    assert.equal(posts[1].text, 'RAID ALERT');
+  } finally { wb.stopAll(); }
+});
+
+test('a raid falls back to the wall webhook when its own URL is blank', () => {
+  const { wb, posts } = discordHarness({
+    raid_to_discord: 1, raid_discord_webhook: '',
+  });
+  try {
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+    assert.equal(posts.length, 1, 'the alert must not vanish');
+    assert.equal(posts[0].webhook, 'https://discord.test/wall');
+  } finally { wb.stopAll(); }
+});
+
+test('with the raid toggle off, raids follow the wall Discord settings', () => {
+  const { wb, posts } = discordHarness({
+    raid_to_discord: 0, raid_discord_webhook: 'https://discord.test/raid',
+  });
+  try {
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+    assert.equal(posts[0].webhook, 'https://discord.test/wall',
+      'an unconfirmed raid hook must not be used');
+  } finally { wb.stopAll(); }
+});
+
+test('a raid still reaches Discord when wall Discord output is switched off', () => {
+  const { wb, posts } = discordHarness({
+    wall_to_discord: 0,
+    raid_to_discord: 1, raid_discord_webhook: 'https://discord.test/raid',
+  });
+  try {
+    wb._send(USER, 'routine wall reminder');
+    assert.equal(posts.length, 0, 'wall traffic stays off');
+
+    wb._beginRaid(USER, db.getSettings.get(USER), null);
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].webhook, 'https://discord.test/raid');
+  } finally { wb.stopAll(); }
 });
 
 // ---- password redaction in the console ----

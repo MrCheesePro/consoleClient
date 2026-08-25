@@ -15,6 +15,11 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Shipped wall-bot reminder template. A constant because the schema default, the migration
+// default, and the stale-default refresh below all have to agree on the same string.
+export const REMINDER_DEFAULT =
+  'Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}';
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -58,7 +63,7 @@ db.exec(`
     wall_interval_ms      INTEGER NOT NULL DEFAULT 600000,
     wall_trigger          TEXT    NOT NULL DEFAULT 'check, checked, walls, wall',
     wall_require_verified INTEGER NOT NULL DEFAULT 1,
-    wall_reminder_message TEXT    NOT NULL DEFAULT 'Wall check! Say "check" when done.',
+    wall_reminder_message TEXT    NOT NULL DEFAULT '${REMINDER_DEFAULT}',
     wall_chat_pattern     TEXT    NOT NULL DEFAULT '',
     wall_msg_command      TEXT    NOT NULL DEFAULT '/msg',
     wall_verify_password  TEXT    NOT NULL DEFAULT '',
@@ -71,7 +76,9 @@ db.exec(`
     raid_trigger          TEXT    NOT NULL DEFAULT 'weewoo, raid, raided',
     raid_off_trigger      TEXT    NOT NULL DEFAULT 'weeoff, raidoff',
     raid_message          TEXT    NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE',
-    raid_delay_ms         INTEGER NOT NULL DEFAULT 15000
+    raid_delay_ms         INTEGER NOT NULL DEFAULT 15000,
+    raid_to_discord       INTEGER NOT NULL DEFAULT 0,
+    raid_discord_webhook  TEXT    NOT NULL DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -121,7 +128,7 @@ db.exec(`
   addColumn('wall_interval_ms', `wall_interval_ms INTEGER NOT NULL DEFAULT 600000`);
   addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT 'check, checked, walls, wall'`);
   addColumn('wall_require_verified', `wall_require_verified INTEGER NOT NULL DEFAULT 1`);
-  addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT 'Wall check! Say "check" when done.'`);
+  addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT '${REMINDER_DEFAULT}'`);
   addColumn('wall_chat_pattern', `wall_chat_pattern TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_msg_command', `wall_msg_command TEXT NOT NULL DEFAULT '/msg'`);
   addColumn('wall_verify_password', `wall_verify_password TEXT NOT NULL DEFAULT ''`);
@@ -135,6 +142,23 @@ db.exec(`
   addColumn('raid_off_trigger', `raid_off_trigger TEXT NOT NULL DEFAULT 'weeoff, raidoff'`);
   addColumn('raid_message', `raid_message TEXT NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE'`);
   addColumn('raid_delay_ms', `raid_delay_ms INTEGER NOT NULL DEFAULT 15000`);
+  addColumn('raid_to_discord', `raid_to_discord INTEGER NOT NULL DEFAULT 0`);
+  addColumn('raid_discord_webhook', `raid_discord_webhook TEXT NOT NULL DEFAULT ''`);
+}
+
+// Changing a column DEFAULT does not touch rows that already exist, so an install created before
+// the template changed would keep the old wording forever. Refresh it — but only where the stored
+// value is still verbatim one of the defaults we previously shipped, so a message someone actually
+// wrote is never overwritten.
+{
+  const SUPERSEDED_DEFAULTS = [
+    'Wall check! Say "check" when done.',
+    'Wall check! Last checked {minutes}m ago.',
+  ];
+  const refresh = db.prepare(
+    `UPDATE settings SET wall_reminder_message = ? WHERE wall_reminder_message = ?`
+  );
+  for (const old of SUPERSEDED_DEFAULTS) refresh.run(REMINDER_DEFAULT, old);
 }
 
 const now = () => Date.now();
@@ -202,6 +226,7 @@ const SETTINGS_FIELDS = [
   'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
   'wall_quiet_start', 'wall_quiet_end',
   'raid_enabled', 'raid_trigger', 'raid_off_trigger', 'raid_message', 'raid_delay_ms',
+  'raid_to_discord', 'raid_discord_webhook',
 ];
 
 export function updateSettings(userId, patch) {
@@ -241,6 +266,11 @@ export const incWallCheck = db.prepare(`
 export const topWallCheckers = db.prepare(
   `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?
    ORDER BY checks DESC, player ASC LIMIT 10`
+);
+// Who checked most recently. Read from the table rather than tracked in memory so the {player}
+// placeholder still resolves after a restart.
+export const lastWallChecker = db.prepare(
+  `SELECT player FROM wall_stats WHERE user_id = ? ORDER BY last_check DESC LIMIT 1`
 );
 export const allWallCheckers = db.prepare(
   `SELECT player, checks, last_check FROM wall_stats WHERE user_id = ?

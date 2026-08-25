@@ -52,6 +52,52 @@ hours (`HH:MM`, server local time) pause reminders; leave either bound blank to 
 Messages are sent exactly as written, so they land in normal chat. To scope them to faction
 chat, start the reminder and raid messages themselves with `/f c `.
 
+**The reminder is a template.** The shipped default is one line:
+
+```
+Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}
+```
+
+Placeholders: `{minutes}` since the last check, `{total}` checks all-time, `{player}` who checked
+last (`nobody` until someone has). An unrecognised `{name}` is left in the message untouched
+rather than blanked. Nothing is appended automatically — what you write is what goes out.
+
+If you put the template on **several lines**, each line is sent as its own chat message 1.5s
+apart. That is the way to make a `/command` actually run: most servers only treat a message as a
+command when it *starts* with the slash, so a `/msg` sitting mid-sentence is sent as ordinary
+chat text.
+
+### Discord webhooks
+
+A webhook posts into one channel. No bot, no token, no invite — just a URL.
+
+1. In Discord, open the target channel's **Edit Channel → Integrations → Webhooks**.
+   (You need *Manage Webhooks* on that channel.)
+2. **New Webhook**, name it, pick the channel, then **Copy Webhook URL**.
+3. Paste it into the panel and turn the matching toggle on:
+   - *Send to Discord* + *Discord webhook URL* — reminders, check confirmations, raid alerts.
+   - *Raid to its own Discord* + *Raid webhook URL* — sends raid alerts to a **different**
+     channel instead, so alarms can live somewhere noisier than routine wall checks.
+
+Raid routing in full: with the raid toggle **off**, raids follow the wall settings. With it **on**
+and a URL set, raids go to that channel. With it on but the URL blank, raids fall back to the wall
+webhook rather than disappearing.
+
+The URL is a secret — anyone holding it can post to that channel. Treat it like a password, and
+if it leaks, delete the webhook in Discord and make a new one.
+
+### Quiet hours and timezone
+
+Quiet hours are read on **the panel server's clock**, not your own. A VPS almost always runs UTC,
+so `00:00`–`14:00` would mean UTC unless you say otherwise. Set your zone in `.env`:
+
+```
+TZ=America/New_York
+```
+
+Restart the panel afterwards (`sudo systemctl restart mcafk-panel`). Check what the server thinks
+the time is with `date`, and list zone names with `timedatectl list-timezones`.
+
 **Verification** is on by default, so only authorized names can log a check or start a raid.
 Two ways onto the roster:
 

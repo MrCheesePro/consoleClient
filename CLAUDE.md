@@ -94,6 +94,15 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - A **blank password closes** self-verification rather than opening it — `_handleVerify` fails shut
   on purpose, so don't "fix" the empty case by letting it through. Wrong guesses are rate-limited
   per player and never logged verbatim.
+- Quiet hours (`isQuietHours`) read the **Node process's local clock** via `getHours()`. Set `TZ`
+  in `.env` to control it; a VPS defaults to UTC. Don't hard-code a zone into the comparison.
+- `WallBot#_send` takes `{ channel: 'wall' | 'raid' }`. Raid output prefers `raid_discord_webhook`
+  when `raid_to_discord` is on **and** the URL is non-empty, otherwise it falls back to the wall
+  webhook — an alert should never silently go nowhere because a field was left blank.
+- `WallBot#_send` splits its text on newlines and sends **one chat message per line** (spaced by
+  the outbound queue). `wall_reminder_message` is a template run through `fillPlaceholders`
+  (`{minutes}`, `{total}`, `{player}`); unknown placeholders are left as-is. Nothing is appended
+  to the template — if you add a detail, add a placeholder rather than concatenating onto it.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.
