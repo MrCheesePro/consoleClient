@@ -489,7 +489,7 @@ export default class WallBot {
     const settings = getSettings.get(userId);
     this._console(userId, text);
     if (settings?.wall_to_minecraft) {
-      this._enqueue(userId, `${settings.wall_chat_prefix || ''}${text}`, text);
+      this._enqueue(userId, text, text);
     }
     if (settings?.wall_to_discord && settings.wall_discord_webhook) {
       this._postDiscord(userId, settings.wall_discord_webhook, text);

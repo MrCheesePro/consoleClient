@@ -45,10 +45,12 @@ whole-word boundaries, so `checkers` won't fire `check`. If you need something m
 a regex in slashes instead: `/^\s*wall\w*\b/`. The same applies to the raid on/off triggers.
 
 **Reminders** fire when nobody has checked for longer than the reminder interval. Each one is
-routed by two independent toggles: *Send to Minecraft* (prefixed with your chat prefix, e.g.
-`/f c `) and *Send to Discord* (a plain webhook URL — no bot, no `discord.py`). Everything is
-mirrored to the panel console either way. Quiet hours (`HH:MM`, server local time) pause
-reminders; leave either bound blank to disable them.
+routed by two independent toggles: *Send to Minecraft* and *Send to Discord* (a plain webhook
+URL — no bot, no `discord.py`). Everything is mirrored to the panel console either way. Quiet
+hours (`HH:MM`, server local time) pause reminders; leave either bound blank to disable them.
+
+Messages are sent exactly as written, so they land in normal chat. To scope them to faction
+chat, start the reminder and raid messages themselves with `/f c `.
 
 **Verification** is on by default, so only authorized names can log a check or start a raid.
 Two ways onto the roster:

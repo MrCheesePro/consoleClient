@@ -10,7 +10,10 @@
   <!-- ===== Auth gate ===== -->
   <div id="auth-screen" class="auth-screen hidden">
     <div class="auth-card">
-      <h1 class="auth-title">AFK Console Client</h1>
+      <div class="auth-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+      </div>
+      <h1 class="auth-title">AFK Console</h1>
       <p class="auth-sub">Enter the password to unlock the panel.</p>
       <p id="auth-error" class="auth-error"></p>
       <label class="field-label">Password</label>
@@ -22,282 +25,374 @@
   </div>
 
   <!-- ===== Main app =====
-       #app is a column: a nav, then one visible .view. Each view owns its own grid, so the
-       two pages can have different column counts. Views are swapped by the hash router in
-       app.js — everything stays in one document, so one WebSocket serves both. -->
-  <div id="app" class="app hidden">
-    <nav class="tabs">
-      <button class="tab" data-view="bots" aria-selected="true">Bots</button>
-      <button class="tab" data-view="wall" aria-selected="false">Wall Bot</button>
-      <span class="tabs-spacer"></span>
-      <span id="user-email" class="tabs-user"></span>
-      <button id="logout-btn" class="link-btn">Log out</button>
-    </nav>
+       Sidebar + main region. All four views live in this one document and are swapped by the
+       hash router in app.js, so a single WebSocket serves the whole panel. -->
+  <div id="app" class="shell hidden">
 
-    <!-- ===================== Bots view ===================== -->
-    <div id="view-bots" class="view view-bots">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">AFK CONSOLE</span>
+          <span class="brand-kicker">CLIENT</span>
+        </div>
+      </div>
 
-      <!-- Column 1: Accounts -->
-      <section class="panel">
-        <h2 class="panel-title">Accounts</h2>
+      <nav class="nav">
+        <button class="tab" data-view="bots" aria-selected="true">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Accounts</span>
+        </button>
+        <button class="tab" data-view="wall" aria-selected="false">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+          <span>Wall Bot</span>
+        </button>
+        <button class="tab" data-view="console" aria-selected="false">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
+          <span>Console</span>
+        </button>
+        <button class="tab" data-view="settings" aria-selected="false">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 2.6a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
 
-        <div class="account-form">
-          <div class="account-inputs">
-            <div class="input-group">
-              <label id="acc-label1" class="field-label">Username</label>
-              <input id="acc-input1" class="text-input" placeholder="" />
+      <div class="sidebar-foot">
+        <div class="conn">
+          <span id="conn-dot" class="dot"></span>
+          <span id="conn-text" class="conn-text">connecting</span>
+        </div>
+        <div class="sidebar-user">
+          <span id="user-email"></span>
+          <button id="logout-btn" class="link-btn">Log out</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title" class="page-title">Accounts</h1>
+        <div class="topbar-meta">
+          <span id="online-count" class="pill">Online: 0/0</span>
+        </div>
+      </header>
+
+      <div id="main-body" class="main-body">
+        <div class="views">
+
+          <!-- ============ Accounts ============ -->
+          <div id="view-bots" class="view">
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>
+                <h3>Accounts</h3>
+                <span id="account-count" class="card-meta">0 accounts</span>
+              </div>
+              <div class="card-body">
+                <div class="account-form">
+                  <div class="account-inputs">
+                    <div class="input-group">
+                      <label id="acc-label1" class="field-label">Username</label>
+                      <input id="acc-input1" class="text-input" placeholder="" />
+                    </div>
+                    <button id="add-account" class="icon-btn" title="Add account">＋</button>
+                  </div>
+                  <p id="acc-hint" class="acc-hint"></p>
+                </div>
+
+                <div class="account-list-head">
+                  <label class="select-all"><input type="checkbox" id="select-all" /> Select all</label>
+                </div>
+                <div id="account-list" class="account-list"></div>
+
+                <div class="account-footer">
+                  <button id="connect-btn" class="btn btn-green">Connect</button>
+                  <button id="disconnect-btn" class="btn btn-red">Disconnect</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M6 20V10"/><path d="M12 20V4"/><path d="M18 20v-6"/></svg>
+                <h3>Top Factions</h3>
+                <button id="lb-refresh" class="link-btn">Refresh now</button>
+              </div>
+              <div class="card-body">
+                <div id="leaderboard-list" class="data-list"></div>
+                <div id="leaderboard-updated" class="muted-note"></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ============ Wall Bot ============ -->
+          <div id="view-wall" class="view hidden">
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+                <h3>Status</h3>
+                <span id="wall-state" class="wall-state">off</span>
+              </div>
+              <div class="card-body">
+                <div class="wall-actions">
+                  <button id="wall-start" class="btn btn-pill">Start</button>
+                  <button id="wall-end" class="btn btn-pill">Stop</button>
+                  <button id="wall-check" class="btn btn-pill">Mark checked</button>
+                  <button id="raid-start" class="btn btn-pill btn-warn">Raid</button>
+                  <button id="raid-stop" class="btn btn-pill">Raid off</button>
+                </div>
+
+                <div id="wall-summary" class="muted-note"></div>
+                <div id="wall-list" class="data-list"></div>
+
+                <div class="wall-actions wall-actions-end">
+                  <button id="wall-export" class="link-btn">Export JSON</button>
+                  <button id="wall-reset" class="link-btn danger">Reset stats</button>
+                </div>
+                <!-- Two-step confirm rather than window.confirm: a native modal blocks the page,
+                     which is exactly the wrong behavior when the panel is driven remotely. -->
+                <div id="wall-reset-confirm" class="wall-confirm hidden">
+                  <span>Wipe all check counts? A JSON backup is saved first.</span>
+                  <button id="wall-reset-yes" class="btn btn-pill btn-red">Yes, reset</button>
+                  <button id="wall-reset-no" class="link-btn">Cancel</button>
+                </div>
+                <div id="wall-reset-result" class="wall-note"></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                <h3>Authorized Players</h3>
+                <span id="roster-count" class="card-meta">0</span>
+              </div>
+              <div class="card-body">
+                <div class="account-inputs">
+                  <div class="input-group">
+                    <input id="roster-input" class="text-input" placeholder="Minecraft username" />
+                  </div>
+                  <button id="roster-add" class="icon-btn" title="Add authorized player">＋</button>
+                </div>
+                <div id="roster-list" class="data-list"></div>
+                <p class="hint">Added here = pre-verified. Players can also self-verify in game:
+                  they message the bot <code>verify &lt;password&gt;</code>, it whispers back a
+                  6-digit code, they reply <code>verify &lt;code&gt;</code> within 15 minutes.</p>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+                <h3>Wall Settings</h3>
+              </div>
+              <div class="card-body">
+                <div class="settings-grid">
+                  <label class="settings-label">Enable wall bot</label>
+                  <button class="toggle" data-setting="wall_enabled" aria-pressed="false"></button>
+
+                  <label class="settings-label">Wall bot account</label>
+                  <select id="set-wall_account" class="select-input" data-setting="wall_account"></select>
+
+                  <label class="settings-label">Reminder interval (ms)</label>
+                  <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
+
+                  <label class="settings-label">Reminder message</label>
+                  <input class="text-input" placeholder="Wall check!" data-setting="wall_reminder_message" />
+
+                  <label class="settings-label">Check triggers</label>
+                  <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
+
+                  <label class="settings-label">Require verification</label>
+                  <button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button>
+
+                  <label class="settings-label">Faction password</label>
+                  <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
+                    autocomplete="off" data-setting="wall_verify_password" />
+
+                  <label class="settings-label">Send to Minecraft</label>
+                  <button class="toggle" data-setting="wall_to_minecraft" aria-pressed="false"></button>
+
+                  <label class="settings-label">Send to Discord</label>
+                  <button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button>
+
+                  <label class="settings-label">Discord webhook URL</label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
+
+                  <label class="settings-label">Quiet hours start</label>
+                  <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
+
+                  <label class="settings-label">Quiet hours end</label>
+                  <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
+
+                  <label class="settings-label">Whisper command</label>
+                  <input class="text-input" placeholder="/msg" data-setting="wall_msg_command" />
+
+                  <label class="settings-label">Listen on</label>
+                  <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
+                </div>
+
+                <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
+                  trigger only when a player messages the bot privately, so a stray word in public
+                  chat can't fire it. <code>chat</code> reads public and faction chat instead.
+                  Anything else is treated as a custom <code>/regex/</code> capturing the player
+                  name then the message.</p>
+
+                <h4 class="card-subhead">Raid alerts</h4>
+                <div class="settings-grid">
+                  <label class="settings-label">Enable raid alerts</label>
+                  <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
+
+                  <label class="settings-label">Raid message</label>
+                  <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
+
+                  <label class="settings-label">Raid repeat (ms)</label>
+                  <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
+
+                  <label class="settings-label">Raid on triggers</label>
+                  <input class="text-input" placeholder="weewoo, raid, raided" data-setting="raid_trigger" />
+
+                  <label class="settings-label">Raid off triggers</label>
+                  <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
+                </div>
+
+                <p class="hint">Triggers accept a comma-separated word list, matched on whole words,
+                  or a <code>/regex/</code> literal. Messages are sent exactly as written — start
+                  them with <code>/f c </code> to scope them to faction chat. Reminders pause during
+                  quiet hours and while a raid alert is running.</p>
+              </div>
+            </section>
+          </div>
+
+          <!-- ============ Console ============ -->
+          <div id="view-console" class="view hidden">
+            <section class="card card-tall">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
+                <h3>Console</h3>
+                <select id="console-target" class="select-input console-select">
+                  <option value="all">All accounts</option>
+                </select>
+              </div>
+              <div class="card-body card-body-tall">
+                <div id="console-output" class="console-output"></div>
+
+                <div class="console-input-row">
+                  <input id="chat-input" class="text-input" placeholder="Hello world" />
+                  <button id="send-btn" class="btn btn-pill">Send</button>
+                </div>
+                <div class="console-input-row">
+                  <input id="spam-message" class="text-input" placeholder="Spam message" data-setting="spam_message" />
+                  <input id="spam-delay" class="text-input" type="number" placeholder="Spam delay (ms)" data-setting="spam_delay_ms" />
+                  <button class="toggle" data-setting="spam_enabled" aria-pressed="false" title="Spam on/off"></button>
+                  <button id="clear-console" class="btn btn-pill">Clear console</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ============ Settings ============ -->
+          <div id="view-settings" class="view hidden">
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                <h3>Bot Settings</h3>
+              </div>
+              <div class="card-body">
+                <div class="settings-grid">
+                  <label class="settings-label">Server IP</label>
+                  <input id="set-server_ip" class="text-input" placeholder="play.server.com" data-setting="server_ip" />
+
+                  <label class="settings-label">Login message</label>
+                  <input id="set-login_message" class="text-input" placeholder="/server factions" data-setting="login_message" />
+
+                  <label class="settings-label">World change message</label>
+                  <input id="set-world_change_message" class="text-input" placeholder="/home afk" data-setting="world_change_message" />
+
+                  <label class="settings-label">Login delay (ms)</label>
+                  <input id="set-login_delay_ms" class="text-input" type="number" placeholder="4000" data-setting="login_delay_ms" />
+
+                  <label class="settings-label">Server version</label>
+                  <input id="set-server_version" class="text-input" placeholder="1.8.9" data-setting="server_version" />
+
+                  <label class="settings-label">Show chat in console</label>
+                  <button class="toggle" data-setting="show_chat" aria-pressed="false"></button>
+
+                  <label class="settings-label">Auto reconnect</label>
+                  <button class="toggle" data-setting="auto_reconnect" aria-pressed="false"></button>
+
+                  <label class="settings-label">Sneak</label>
+                  <button class="toggle" data-setting="sneak" aria-pressed="false"></button>
+
+                  <label class="settings-label">Anti AFK</label>
+                  <button class="toggle" data-setting="anti_afk" aria-pressed="false"></button>
+
+                  <label class="settings-label">Offline/cracked accounts</label>
+                  <button class="toggle" data-setting="offline_mode" aria-pressed="false"></button>
+
+                  <label class="settings-label">Leaderboard (hourly)</label>
+                  <button class="toggle" data-setting="leaderboard_enabled" aria-pressed="false"></button>
+
+                  <label class="settings-label">Leaderboard command</label>
+                  <input class="text-input" placeholder="/f top" data-setting="leaderboard_command" />
+
+                  <label class="settings-label">Leaderboard account</label>
+                  <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
+
+                  <label class="settings-label">Drop all items</label>
+                  <button id="drop-btn" class="btn btn-pill">Drop</button>
+
+                  <label class="settings-label">Equip armor</label>
+                  <button id="equip-btn" class="btn btn-pill">Equip</button>
+
+                  <label class="settings-label">Use held item</label>
+                  <button id="use-btn" class="btn btn-pill">Use</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/></svg>
+                <h3>Proxy Pool</h3>
+                <span class="card-meta">3 accounts per IP</span>
+              </div>
+              <div class="card-body">
+                <textarea class="text-input proxy-pool" rows="4" spellcheck="false"
+                  data-setting="proxy_pool"
+                  placeholder="direct&#10;socks5://user:pass@1.2.3.4:1080&#10;socks5://user:pass@1.2.3.5:1080"></textarea>
+                <p class="hint">Accounts fill each entry in order, 3 per IP. "direct" = this
+                  machine's IP. Leave blank to disable.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Status rail. Shown beside the Accounts and Wall Bot views; hidden for Console and
+             Settings, which want the full width. Only real values here — no invented metrics. -->
+        <aside id="rail" class="rail">
+          <section class="card">
+            <div class="card-head"><h3 class="rail-title">System Status</h3></div>
+            <div class="card-body rail-body">
+              <div class="stat"><span class="stat-k">Bots online</span><span id="rail-online" class="stat-v">0/0</span></div>
+              <div class="stat"><span class="stat-k">Wall bot</span><span id="rail-wall" class="stat-v">off</span></div>
+              <div class="stat"><span class="stat-k">Last check</span><span id="rail-last" class="stat-v">—</span></div>
+              <div class="stat"><span class="stat-k">Total checks</span><span id="rail-total" class="stat-v">0</span></div>
+              <div class="stat"><span class="stat-k">Authorized</span><span id="rail-roster" class="stat-v">0</span></div>
+              <div class="stat"><span class="stat-k">Panel link</span><span id="rail-conn" class="stat-v">—</span></div>
             </div>
-            <button id="add-account" class="icon-btn" title="Add account">＋</button>
-          </div>
-          <p id="acc-hint" class="acc-hint"></p>
-        </div>
+          </section>
 
-        <div class="account-list-head">
-          <span id="account-count" class="account-count">0 accounts</span>
-          <label class="select-all"><input type="checkbox" id="select-all" /> Select all</label>
-        </div>
-        <div id="account-list" class="account-list"></div>
-
-        <div class="account-footer">
-          <button id="connect-btn" class="btn btn-green">Connect</button>
-          <button id="disconnect-btn" class="btn btn-red">Disconnect</button>
-          <span id="online-count" class="online-count">Online: 0/0</span>
-        </div>
-
-        <div class="leaderboard">
-          <div class="leaderboard-head">
-            <span class="leaderboard-title">Top Factions</span>
-            <button id="lb-refresh" class="link-btn">Refresh now</button>
-          </div>
-          <div id="leaderboard-list" class="leaderboard-list"></div>
-          <div id="leaderboard-updated" class="leaderboard-updated"></div>
-        </div>
-
-        <div class="panel-foot-note">Multi-account AFK client · v1.0</div>
-      </section>
-
-      <!-- Column 2: Settings -->
-      <section class="panel">
-        <h2 class="panel-title">Settings</h2>
-        <div class="settings-grid">
-          <label class="settings-label">Server IP</label>
-          <input id="set-server_ip" class="text-input" placeholder="play.server.com" data-setting="server_ip" />
-
-          <label class="settings-label">Login message</label>
-          <input id="set-login_message" class="text-input" placeholder="/server factions" data-setting="login_message" />
-
-          <label class="settings-label">World change message</label>
-          <input id="set-world_change_message" class="text-input" placeholder="/home afk" data-setting="world_change_message" />
-
-          <label class="settings-label">Login delay (ms)</label>
-          <input id="set-login_delay_ms" class="text-input" type="number" placeholder="4000" data-setting="login_delay_ms" />
-
-          <label class="settings-label">Server version</label>
-          <input id="set-server_version" class="text-input" placeholder="1.8.9" data-setting="server_version" />
-
-          <label class="settings-label">Show chat in console</label>
-          <button class="toggle" data-setting="show_chat" aria-pressed="false"></button>
-
-          <label class="settings-label">Auto reconnect</label>
-          <button class="toggle" data-setting="auto_reconnect" aria-pressed="false"></button>
-
-          <label class="settings-label">Sneak</label>
-          <button class="toggle" data-setting="sneak" aria-pressed="false"></button>
-
-          <label class="settings-label">Anti AFK</label>
-          <button class="toggle" data-setting="anti_afk" aria-pressed="false"></button>
-
-          <label class="settings-label">Offline/cracked accounts</label>
-          <button class="toggle" data-setting="offline_mode" aria-pressed="false"></button>
-
-          <label class="settings-label">Leaderboard (hourly)</label>
-          <button class="toggle" data-setting="leaderboard_enabled" aria-pressed="false"></button>
-
-          <label class="settings-label">Leaderboard command</label>
-          <input class="text-input" placeholder="/f top" data-setting="leaderboard_command" />
-
-          <label class="settings-label">Leaderboard account</label>
-          <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
-
-          <label class="settings-label">Drop all items</label>
-          <button id="drop-btn" class="btn btn-pill">Drop</button>
-
-          <label class="settings-label">Equip armor</label>
-          <button id="equip-btn" class="btn btn-pill">Equip</button>
-
-          <label class="settings-label">Use held item</label>
-          <button id="use-btn" class="btn btn-pill">Use</button>
-        </div>
-
-        <label class="settings-label proxy-label">Proxy pool — one per line, 3 accounts per IP</label>
-        <textarea class="text-input proxy-pool" rows="3" spellcheck="false"
-          data-setting="proxy_pool"
-          placeholder="direct&#10;socks5://user:pass@1.2.3.4:1080&#10;socks5://user:pass@1.2.3.5:1080"></textarea>
-        <p class="proxy-hint">Accounts fill each entry in order, 3 per IP. "direct" = this machine's IP. Leave blank to disable.</p>
-      </section>
-
-      <!-- Column 3: Console -->
-      <section class="panel">
-        <div class="console-head">
-          <h2 class="panel-title">Console</h2>
-          <div class="console-target">
-            <label class="field-label">Select account</label>
-            <select id="console-target" class="select-input">
-              <option value="all">All accounts</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="console-output" class="console-output"></div>
-
-        <div class="console-input-row">
-          <input id="chat-input" class="text-input" placeholder="Hello world" />
-          <button id="send-btn" class="btn btn-pill">Send</button>
-        </div>
-        <div class="console-input-row">
-          <input id="spam-message" class="text-input" placeholder="Spam message" data-setting="spam_message" />
-          <input id="spam-delay" class="text-input" type="number" placeholder="Spam delay (ms)" data-setting="spam_delay_ms" />
-          <button class="toggle" data-setting="spam_enabled" aria-pressed="false" title="Spam on/off"></button>
-          <button id="clear-console" class="btn btn-pill">Clear console</button>
-        </div>
-      </section>
-    </div>
-
-    <!-- ===================== Wall bot view ===================== -->
-    <div id="view-wall" class="view view-wall hidden">
-
-      <!-- Column 1: status, controls, roster -->
-      <section class="panel">
-        <h2 class="panel-title">Wall Bot</h2>
-
-        <div class="leaderboard">
-          <div class="leaderboard-head">
-            <span class="leaderboard-title">Status</span>
-            <span id="wall-state" class="wall-state">off</span>
-          </div>
-
-          <div class="wall-actions">
-            <button id="wall-start" class="btn btn-pill">Start</button>
-            <button id="wall-end" class="btn btn-pill">Stop</button>
-            <button id="wall-check" class="btn btn-pill">Mark checked</button>
-            <button id="raid-start" class="btn btn-pill btn-warn">Raid</button>
-            <button id="raid-stop" class="btn btn-pill">Raid off</button>
-          </div>
-
-          <div id="wall-summary" class="leaderboard-updated"></div>
-          <div id="wall-list" class="leaderboard-list"></div>
-
-          <div class="wall-actions">
-            <button id="wall-export" class="link-btn">Export JSON</button>
-            <button id="wall-reset" class="link-btn danger">Reset stats</button>
-          </div>
-          <!-- Two-step confirm rather than window.confirm: a native modal blocks the page, which
-               is exactly the wrong behavior when the panel is being driven remotely. -->
-          <div id="wall-reset-confirm" class="wall-confirm hidden">
-            <span>Wipe all check counts? A JSON backup is saved first.</span>
-            <button id="wall-reset-yes" class="btn btn-pill btn-red">Yes, reset</button>
-            <button id="wall-reset-no" class="link-btn">Cancel</button>
-          </div>
-          <div id="wall-reset-result" class="wall-note"></div>
-        </div>
-
-        <div class="leaderboard">
-          <div class="leaderboard-head">
-            <span class="leaderboard-title">Authorized Players</span>
-            <span id="roster-count" class="account-count">0</span>
-          </div>
-          <div class="account-inputs">
-            <div class="input-group">
-              <input id="roster-input" class="text-input" placeholder="Minecraft username" />
+          <section class="card">
+            <div class="card-head"><h3 class="rail-title">Recent Activity</h3></div>
+            <div class="card-body rail-body">
+              <div id="activity-list" class="activity"></div>
             </div>
-            <button id="roster-add" class="icon-btn" title="Add authorized player">＋</button>
-          </div>
-          <div id="roster-list" class="leaderboard-list"></div>
-          <p class="proxy-hint">Added here = pre-verified. Players can also self-verify in game:
-            they say <code>verify</code>, the bot messages them a code, they reply
-            <code>verify &lt;code&gt;</code>.</p>
-        </div>
-      </section>
-
-      <!-- Column 2: wall + raid settings -->
-      <section class="panel">
-        <h2 class="panel-title">Wall Settings</h2>
-        <div class="settings-grid">
-          <label class="settings-label">Enable wall bot</label>
-          <button class="toggle" data-setting="wall_enabled" aria-pressed="false"></button>
-
-          <label class="settings-label">Wall bot account</label>
-          <select id="set-wall_account" class="select-input" data-setting="wall_account"></select>
-
-          <label class="settings-label">Reminder interval (ms)</label>
-          <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
-
-          <label class="settings-label">Reminder message</label>
-          <input class="text-input" placeholder="Wall check!" data-setting="wall_reminder_message" />
-
-          <label class="settings-label">Check triggers</label>
-          <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
-
-          <label class="settings-label">Require verification</label>
-          <button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button>
-
-          <label class="settings-label">Faction password</label>
-          <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
-            autocomplete="off" data-setting="wall_verify_password" />
-
-          <label class="settings-label">Send to Minecraft</label>
-          <button class="toggle" data-setting="wall_to_minecraft" aria-pressed="false"></button>
-
-          <label class="settings-label">Minecraft chat prefix</label>
-          <input class="text-input" placeholder="/f c " data-setting="wall_chat_prefix" />
-
-          <label class="settings-label">Send to Discord</label>
-          <button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button>
-
-          <label class="settings-label">Discord webhook URL</label>
-          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
-
-          <label class="settings-label">Quiet hours start</label>
-          <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
-
-          <label class="settings-label">Quiet hours end</label>
-          <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
-
-          <label class="settings-label">Whisper command</label>
-          <input class="text-input" placeholder="/msg" data-setting="wall_msg_command" />
-
-          <label class="settings-label">Listen on</label>
-          <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
-        </div>
-
-        <p class="proxy-hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
-          trigger only when a player messages the bot privately, so a stray word in public chat
-          can't fire it. <code>chat</code> reads public and faction chat instead. Anything else is
-          treated as a custom <code>/regex/</code> capturing the player name then the message.</p>
-
-        <h3 class="panel-subtitle">Raid alerts</h3>
-        <div class="settings-grid">
-          <label class="settings-label">Enable raid alerts</label>
-          <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
-
-          <label class="settings-label">Raid message</label>
-          <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
-
-          <label class="settings-label">Raid repeat (ms)</label>
-          <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
-
-          <label class="settings-label">Raid on triggers</label>
-          <input class="text-input" placeholder="weewoo, raid, raided" data-setting="raid_trigger" />
-
-          <label class="settings-label">Raid off triggers</label>
-          <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
-        </div>
-
-        <p class="proxy-hint">Triggers accept a comma-separated word list, matched on whole words,
-          or a <code>/regex/</code> literal. Reminders pause during quiet hours and while a raid
-          alert is running.</p>
-      </section>
-    </div>
+          </section>
+        </aside>
+      </div>
+    </main>
   </div>
 
   <!-- ===== Microsoft device-code modal ===== -->

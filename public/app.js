@@ -45,6 +45,7 @@ async function showApp() {
   renderAccounts();
   renderLeaderboard();
   renderWallBot();
+  renderActivity();
   updateAccountForm();
   routeFromHash();
   connectWs();
@@ -54,7 +55,15 @@ async function showApp() {
 // Both views live in the same document; only their visibility changes, so one WebSocket and
 // one copy of the render code serve both. The hash is the single source of truth for which
 // view is active — tabs set it, and the hashchange handler does the switching.
-const VIEWS = ['bots', 'wall'];
+const VIEWS = ['bots', 'wall', 'console', 'settings'];
+const VIEW_TITLES = {
+  bots: 'Accounts',
+  wall: 'Wall Bot',
+  console: 'Console',
+  settings: 'Settings',
+};
+// Console and Settings want the full width; the status rail only belongs beside the other two.
+const RAIL_VIEWS = new Set(['bots', 'wall']);
 
 function showView(name) {
   const active = VIEWS.includes(name) ? name : 'bots';
@@ -62,6 +71,8 @@ function showView(name) {
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.setAttribute('aria-selected', tab.dataset.view === active ? 'true' : 'false');
   });
+  $('page-title').textContent = VIEW_TITLES[active];
+  $('main-body').classList.toggle('no-rail', !RAIL_VIEWS.has(active));
 }
 
 function routeFromHash() { showView(location.hash.replace(/^#/, '')); }
@@ -97,8 +108,25 @@ $('logout-btn').onclick = async () => {
 function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
+  setConn('connecting');
+  ws.onopen = () => setConn('connected');
   ws.onmessage = (ev) => handleWs(JSON.parse(ev.data));
-  ws.onclose = () => { setTimeout(() => { if (!$('app').classList.contains('hidden')) connectWs(); }, 2000); };
+  ws.onclose = () => {
+    setConn('reconnecting');
+    setTimeout(() => { if (!$('app').classList.contains('hidden')) connectWs(); }, 2000);
+  };
+}
+
+// Sidebar dot + rail row. Reflects the real socket state — this is the one thing on the panel
+// that tells you whether what you're looking at is still live.
+function setConn(state) {
+  const dot = $('conn-dot');
+  const label = { connected: 'connected', connecting: 'connecting', reconnecting: 'reconnecting' }[state] || state;
+  dot.className = 'dot' + (state === 'connected' ? ' live' : state === 'reconnecting' ? ' down' : ' warn');
+  $('conn-text').textContent = label;
+  const railConn = $('rail-conn');
+  railConn.textContent = label;
+  railConn.className = 'stat-v' + (state === 'connected' ? ' good' : state === 'reconnecting' ? ' bad' : ' warn');
 }
 function wsSend(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
@@ -117,6 +145,11 @@ function handleWs(msg) {
       break;
     case 'consoleLine':
       appendConsole(msg);
+      // Wall bot lines are already tagged "[wall]" server-side; surface those in the rail feed
+      // rather than inventing a second event stream for it.
+      if (typeof msg.text === 'string' && msg.text.startsWith('[wall]')) {
+        pushActivity(msg.text.slice(6).trim());
+      }
       break;
     case 'accountAdded':
       hideMsaModal();
@@ -225,6 +258,7 @@ function renderAccounts() {
 
   renderConsoleTargets();
   renderLeaderboardAccountOptions();
+  renderRail();
 }
 
 // Focus an account (or 'all') across the Accounts list + Console dropdown.
@@ -453,6 +487,72 @@ $('wall-reset-yes').onclick = async () => {
   }
 };
 
+// ===== Status rail =====
+const activity = [];
+const ACTIVITY_MAX = 12;
+
+function pushActivity(text) {
+  activity.unshift({ text, at: Date.now() });
+  while (activity.length > ACTIVITY_MAX) activity.pop();
+  renderActivity();
+}
+
+function renderActivity() {
+  const list = $('activity-list');
+  list.innerHTML = '';
+  if (!activity.length) {
+    const empty = document.createElement('div');
+    empty.className = 'activity-empty';
+    empty.textContent = 'Nothing yet.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const entry of activity) {
+    const row = document.createElement('div');
+    row.className = 'activity-row';
+
+    const time = document.createElement('span');
+    time.className = 'activity-time';
+    time.textContent = new Date(entry.at).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+    const text = document.createElement('span');
+    text.className = 'activity-text';
+    text.textContent = entry.text;
+
+    row.append(time, text);
+    list.appendChild(row);
+  }
+}
+
+// Short tween so counters land on their value instead of snapping. Skipped for small jumps —
+// animating 0 -> 1 is just noise.
+function countUp(el, to) {
+  const from = Number(el.dataset.value || 0);
+  el.dataset.value = String(to);
+  if (Math.abs(to - from) < 2) { el.textContent = String(to); return; }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / 420);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function renderRail() {
+  const online = Object.values(statuses).filter((s) => s === 'online').length;
+  $('rail-online').textContent = `${online}/${accounts.length}`;
+
+  const state = $('rail-wall');
+  state.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  state.className = 'stat-v' + (wall.raidActive ? ' bad' : (wall.active ? ' good' : ''));
+
+  $('rail-last').textContent = wall.lastCheckAt ? formatAgo(wall.lastCheckAt) : '—';
+  countUp($('rail-total'), wall.totalChecks);
+  $('rail-roster').textContent = String(wall.roster.length);
+}
+
 function renderWallSummary() {
   const parts = [`${wall.totalChecks} check${wall.totalChecks === 1 ? '' : 's'} total`];
   parts.push(wall.lastCheckAt ? `last ${formatAgo(wall.lastCheckAt)}` : 'no checks yet');
@@ -466,6 +566,7 @@ function renderWallBot() {
   state.className = 'wall-state' + (wall.raidActive ? ' raid' : (wall.active ? ' on' : ''));
 
   renderWallSummary();
+  renderRail();
 
   const list = $('wall-list');
   list.innerHTML = '';

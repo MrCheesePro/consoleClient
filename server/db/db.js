@@ -59,7 +59,6 @@ db.exec(`
     wall_trigger          TEXT    NOT NULL DEFAULT 'check, checked, walls, wall',
     wall_require_verified INTEGER NOT NULL DEFAULT 1,
     wall_reminder_message TEXT    NOT NULL DEFAULT 'Wall check! Say "check" when done.',
-    wall_chat_prefix      TEXT    NOT NULL DEFAULT '/f c ',
     wall_chat_pattern     TEXT    NOT NULL DEFAULT '',
     wall_msg_command      TEXT    NOT NULL DEFAULT '/msg',
     wall_verify_password  TEXT    NOT NULL DEFAULT '',
@@ -123,7 +122,6 @@ db.exec(`
   addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT 'check, checked, walls, wall'`);
   addColumn('wall_require_verified', `wall_require_verified INTEGER NOT NULL DEFAULT 1`);
   addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT 'Wall check! Say "check" when done.'`);
-  addColumn('wall_chat_prefix', `wall_chat_prefix TEXT NOT NULL DEFAULT '/f c '`);
   addColumn('wall_chat_pattern', `wall_chat_pattern TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_msg_command', `wall_msg_command TEXT NOT NULL DEFAULT '/msg'`);
   addColumn('wall_verify_password', `wall_verify_password TEXT NOT NULL DEFAULT ''`);
@@ -199,7 +197,7 @@ const SETTINGS_FIELDS = [
   'offline_mode', 'spam_message', 'spam_delay_ms', 'spam_enabled', 'proxy_pool',
   'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
   'wall_enabled', 'wall_account', 'wall_interval_ms', 'wall_trigger',
-  'wall_require_verified', 'wall_reminder_message', 'wall_chat_prefix',
+  'wall_require_verified', 'wall_reminder_message',
   'wall_chat_pattern', 'wall_msg_command', 'wall_verify_password',
   'wall_to_minecraft', 'wall_to_discord', 'wall_discord_webhook',
   'wall_quiet_start', 'wall_quiet_end',
