@@ -895,6 +895,112 @@ test('checks fall back to the wall webhook when no logs channel is set', async (
   } finally { wb.stopAll(); }
 });
 
+// ---- factions leaderboard ----
+
+const { parseLeaderboard } = await import('../server/bots/BotManager.js');
+
+test('parseLeaderboard reads a tagged "Base Points" board', () => {
+  // Verbatim from a real /f base reply, tags and all — this exact shape used to parse as nothing.
+  const entries = parseLeaderboard([
+    '[captunnel] Top Base Factions (1/5)',
+    '[captunnel] 1. TurtleGang - 100,898 Base Points',
+    '[captunnel] 2. RastaMouse - 73,376 Base Points',
+    '[captunnel] 3. Zomboid - 56,144 Base Points',
+    '[captunnel] 4. Dominion - 35,796 Base Points',
+    '[captunnel] 5. EzBuckets - 11,867 Base Points',
+    '[captunnel] 6. Thanos - 10,732 Base Points',
+    '[captunnel] 7. RaidEvent - 9,000 Base Points',
+    '[captunnel] 8. Certi - 7,225 Base Points',
+    '[captunnel] 9. Tectonic - 6,894 Base Points',
+    '[captunnel] 10. TBS - 6,286 Base Points',
+    '[captunnel]',
+  ]);
+
+  assert.equal(entries.length, 10);
+  assert.deepEqual(entries[0], { rank: 1, name: 'TurtleGang', points: 100898, gain: null });
+  assert.deepEqual(entries[9], { rank: 10, name: 'TBS', points: 6286, gain: null });
+});
+
+test('parseLeaderboard still reads the untagged "Faction Points" board with gains', () => {
+  const entries = parseLeaderboard([
+    'Top Factions (1/5)',
+    '1. TurtleGang - 189,101 Faction Points (+24,221)',
+    '2. RastaMouse - 73,376 Faction Points (-1,004)',
+  ]);
+  assert.deepEqual(entries, [
+    { rank: 1, name: 'TurtleGang', points: 189101, gain: 24221 },
+    { rank: 2, name: 'RastaMouse', points: 73376, gain: -1004 },
+  ]);
+});
+
+test('parseLeaderboard tolerates colour codes and bare "Points"', () => {
+  const entries = parseLeaderboard([
+    '§7[captunnel] §61. §fTurtleGang §7- §e100,898 Points',
+  ]);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].name, 'TurtleGang');
+  assert.equal(entries[0].points, 100898);
+});
+
+test('parseLeaderboard ignores chatter and caps at ten', () => {
+  assert.deepEqual(parseLeaderboard(['[captunnel] Top Base Factions (1/5)', 'hello', '']), []);
+  const many = Array.from({ length: 15 }, (_, i) => `${i + 1}. F${i + 1} - ${i + 1} Base Points`);
+  assert.equal(parseLeaderboard(many).length, 10);
+});
+
+test('the leaderboard posts a Discord embed and never echoes into Minecraft', async () => {
+  clearWallTables();
+  const sent = [];
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_to_minecraft: 1,
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    leaderboard_to_discord: 1, leaderboard_discord_webhook: 'https://discord.test/board',
+  });
+  const session = { account: { id: 'a', username: 'captunnel' }, bot: { username: 'captunnel' }, status: 'online', sendChat: (m) => sent.push(m) };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    const posts = await capturePost(async () => {
+      wb.postLeaderboard(USER, [
+        { rank: 1, name: 'TurtleGang', points: 100898, gain: null },
+        { rank: 2, name: 'RastaMouse', points: 73376, gain: -1004 },
+      ]);
+    });
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].url, 'https://discord.test/board', 'uses its own channel');
+
+    const embed = posts[0].body.embeds[0];
+    assert.equal(embed.title, 'Top Factions');
+    assert.equal(embed.color, 0xF1C40F);
+    assert.match(embed.description, /\*\*TurtleGang\*\* — 100,898/);
+    assert.match(embed.description, /\*\*RastaMouse\*\* — 73,376 \(-1,004\)/);
+    assert.equal(embed.footer.text, 'captunnel');
+
+    // No outbound state is even created — the board never touches the Minecraft path.
+    assert.deepEqual(sent.concat(wb.users.get(USER)?.queue ?? []), [],
+      'ten lines of board must never be echoed into chat');
+  } finally { wb.stopAll(); }
+});
+
+test('the leaderboard falls back to the wall webhook, and stays quiet with no entries', async () => {
+  clearWallTables();
+  db.updateSettings(USER, {
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    leaderboard_to_discord: 0, leaderboard_discord_webhook: '',
+  });
+  const session = { account: { id: 'a', username: 'captunnel' }, bot: { username: 'captunnel' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  try {
+    let posts = await capturePost(async () => {
+      wb.postLeaderboard(USER, [{ rank: 1, name: 'TurtleGang', points: 1, gain: null }]);
+    });
+    assert.equal(posts[0].url, 'https://discord.test/wall');
+
+    posts = await capturePost(async () => { wb.postLeaderboard(USER, []); });
+    assert.equal(posts.length, 0, 'an empty board is not worth a post');
+  } finally { wb.stopAll(); }
+});
+
 // ---- quiet hours ----
 
 // A window that definitely contains "now", and one that definitely doesn't, built from the

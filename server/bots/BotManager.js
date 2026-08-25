@@ -1,5 +1,5 @@
 import BotSession from './BotSession.js';
-import WallBot from './WallBot.js';
+import WallBot, { stripFormatting } from './WallBot.js';
 import {
   getSettings, listAccounts, getAccountById, getLeaderboard, upsertLeaderboard,
 } from '../db/db.js';
@@ -17,10 +17,13 @@ const LEADERBOARD_ONLINE_DELAY_MS = 30 * 1000;  // wait after a bot connects bef
  * `{ rank, name, points, gain }` entries sorted by rank (gain may be null).
  */
 export function parseLeaderboard(lines) {
-  const re = /^\s*(\d+)\.\s+(.+?)\s+-\s+([\d,]+)\s+Faction Points(?:\s*\(([+-][\d,]+)\))?/i;
+  // Leading server/world tags are skipped, and the points label is whatever the server calls it
+  // — "Faction Points", "Base Points", or bare "Points". Pinning it to one wording, and anchoring
+  // at the start of the line, is what made a tagged "Base Points" board parse as nothing at all.
+  const re = /^(?:\[[^\]]*\]\s*)*(\d+)\.\s+(.+?)\s+-\s+([\d,]+)\s+(?:\w+\s+)?Points(?:\s*\(([+-][\d,]+)\))?/i;
   const byRank = new Map();
   for (const line of lines || []) {
-    const m = re.exec(String(line));
+    const m = re.exec(stripFormatting(line).trim());
     if (!m) continue;
     const rank = Number(m[1]);
     if (byRank.has(rank)) continue; // first occurrence wins
@@ -255,6 +258,7 @@ export default class BotManager {
       const updatedAt = Date.now();
       upsertLeaderboard.run({ user_id: userId, updated_at: updatedAt, entries: JSON.stringify(entries) });
       this.emitToUser(userId, { type: 'leaderboard', entries, updatedAt });
+      this.wallBot.postLeaderboard(userId, entries);
     } catch (e) {
       this.emitToUser(userId, { type: 'error', message: `Leaderboard refresh failed: ${e.message}` });
     } finally {

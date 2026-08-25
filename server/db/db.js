@@ -69,6 +69,8 @@ db.exec(`
     leaderboard_enabled INTEGER NOT NULL DEFAULT 0,
     leaderboard_command TEXT    NOT NULL DEFAULT '/f top',
     leaderboard_account TEXT    NOT NULL DEFAULT '',
+    leaderboard_to_discord INTEGER NOT NULL DEFAULT 0,
+    leaderboard_discord_webhook TEXT NOT NULL DEFAULT '',
     wall_enabled          INTEGER NOT NULL DEFAULT 0,
     wall_account          TEXT    NOT NULL DEFAULT '',
     wall_interval_ms      INTEGER NOT NULL DEFAULT 600000,
@@ -140,6 +142,8 @@ db.exec(`
   addColumn('leaderboard_enabled', `leaderboard_enabled INTEGER NOT NULL DEFAULT 0`);
   addColumn('leaderboard_command', `leaderboard_command TEXT NOT NULL DEFAULT '/f top'`);
   addColumn('leaderboard_account', `leaderboard_account TEXT NOT NULL DEFAULT ''`);
+  addColumn('leaderboard_to_discord', `leaderboard_to_discord INTEGER NOT NULL DEFAULT 0`);
+  addColumn('leaderboard_discord_webhook', `leaderboard_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_enabled', `wall_enabled INTEGER NOT NULL DEFAULT 0`);
   addColumn('wall_account', `wall_account TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_interval_ms', `wall_interval_ms INTEGER NOT NULL DEFAULT 600000`);
@@ -251,6 +255,7 @@ const SETTINGS_FIELDS = [
   'server_version', 'show_chat', 'auto_reconnect', 'sneak', 'anti_afk',
   'offline_mode', 'spam_message', 'spam_delay_ms', 'spam_enabled', 'proxy_pool',
   'leaderboard_enabled', 'leaderboard_command', 'leaderboard_account',
+  'leaderboard_to_discord', 'leaderboard_discord_webhook',
   'wall_enabled', 'wall_account', 'wall_interval_ms', 'wall_trigger',
   'wall_require_verified', 'wall_reminder_message', 'wall_check_message', 'wall_discord_message',
   'wall_chat_pattern', 'wall_msg_command', 'wall_verify_password',

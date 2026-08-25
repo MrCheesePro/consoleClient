@@ -112,6 +112,12 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `{embeds:[…]}`; the caller's object *is* the embed, so `author`/`fields`/`footer` pass straight
   through and only `timestamp` is forced. No `embed` means a plain `{content}` post, so the embed
   is never load-bearing.
+- `parseLeaderboard` (`BotManager.js`) must stay tolerant: leading `[server]` tags are skipped and
+  the score label is any word before `Points`, so `/f top` ("Faction Points") and `/f base`
+  ("Base Points") both parse. Pinning it to one wording is what silently broke it before — the
+  regression cases in `test/wallbot.test.js` carry verbatim server output.
+- `WallBot#postLeaderboard` is **Discord-only** on purpose. Never route the board through `_send`;
+  ten lines into Minecraft chat is a spam mute.
 - `wall_stats` splits `checks` (wall) from `raid_checks` (logged while a raid was running). They
   are **mutually exclusive** — one check increments exactly one counter. The leaderboard and
   `{checks}` rank on `checks`. Raid output prefers `raid_discord_webhook`

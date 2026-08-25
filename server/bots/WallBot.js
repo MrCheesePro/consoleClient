@@ -11,6 +11,7 @@ const COLOR_ALERT = 0xED4245; // red — reminders and raids
 const COLOR_OK = 0x57F287;    // green — a check landed
 const COLOR_MUTED = 0x99AAB5; // grey — an all-clear
 const COLOR_LOG = 0x22D3EE;   // cyan — the check log
+const COLOR_BOARD = 0xF1C40F; // gold — the factions leaderboard
 
 // Player head for the log embed's author line. Discord fetches this itself, so the player's name
 // reaches a third-party skin service rather than us calling out. Blank the constant to drop it.
@@ -679,6 +680,34 @@ export default class WallBot {
     if (enabled && webhook) {
       this._postDiscord(userId, webhook, lines.join('\n'), embed);
     }
+  }
+
+  /**
+   * Post a parsed factions board to Discord. Discord-only by design: the whole point of the
+   * hourly refresh is that nobody has to read the board in chat, so echoing ten lines back into
+   * Minecraft would be the opposite of useful (and a fast route to a spam mute).
+   */
+  postLeaderboard(userId, entries) {
+    if (!entries?.length) return;
+    const settings = getSettings.get(userId);
+    const useBoard = settings?.leaderboard_to_discord && settings.leaderboard_discord_webhook;
+    const webhook = useBoard ? settings.leaderboard_discord_webhook : settings?.wall_discord_webhook;
+    const enabled = useBoard || settings?.wall_to_discord;
+    if (!enabled || !webhook) return;
+
+    const rows = entries.map((e) => {
+      const gain = e.gain === null || e.gain === undefined
+        ? ''
+        : ` (${e.gain >= 0 ? '+' : ''}${e.gain.toLocaleString('en-US')})`;
+      return `\`${String(e.rank).padStart(2, ' ')}.\` **${e.name}** — ${e.points.toLocaleString('en-US')}${gain}`;
+    });
+
+    this._postDiscord(userId, webhook, '', {
+      color: COLOR_BOARD,
+      title: 'Top Factions',
+      description: rows.join('\n'),
+      footer: { text: this.resolveSession(userId)?.account?.username || 'wallbot' },
+    });
   }
 
   /** Private reply to one player. Never leaves Minecraft — codes and refusals aren't for Discord. */

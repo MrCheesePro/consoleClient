@@ -110,6 +110,13 @@ Minutes Unchecked: **{minutes}**
 Last Checker: **{player}** (Total Checks: {checks})
 ```
 
+**The factions leaderboard** posts a gold embed on each hourly refresh: rank, faction, points, and
+the gain when the server reports one. It is Discord-only — the whole point of the hourly refresh is
+that nobody has to read the board in chat, so it is never echoed back into Minecraft.
+
+The parser skips leading server tags and accepts whatever the server calls the score — *Faction
+Points*, *Base Points*, or bare *Points* — so `/f top` and `/f base` both work.
+
 **Raid alerts** post their own embed: a TNT icon, the headline *WE ARE GETTING RAIDED!*, a bold
 call to action (*Raid Discord body*, default "Check walls immediately and get online."), when the
 alert started, and a **time since alert** that climbs with each repeat. Clearing the alert posts
