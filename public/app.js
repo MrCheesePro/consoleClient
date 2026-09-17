@@ -62,6 +62,12 @@ const VIEW_TITLES = {
   console: 'Console',
   settings: 'Settings',
 };
+const VIEW_SUBS = {
+  bots: 'Bot identities, load state, and connection control.',
+  wall: 'Wall check tracking, player verification, and raid alerts.',
+  console: 'Multi-bot terminal and chat broadcast.',
+  settings: 'Connection routing, login macros, and automation behavior.',
+};
 // Console and Settings want the full width; the status rail only belongs beside the other two.
 const RAIL_VIEWS = new Set(['bots', 'wall']);
 
@@ -72,6 +78,7 @@ function showView(name) {
     tab.setAttribute('aria-selected', tab.dataset.view === active ? 'true' : 'false');
   });
   $('page-title').textContent = VIEW_TITLES[active];
+  $('page-sub').textContent = VIEW_SUBS[active];
   $('main-body').classList.toggle('no-rail', !RAIL_VIEWS.has(active));
 }
 
@@ -551,6 +558,43 @@ function renderRail() {
   $('rail-last').textContent = wall.lastCheckAt ? formatAgo(wall.lastCheckAt) : '—';
   countUp($('rail-total'), wall.totalChecks);
   $('rail-roster').textContent = String(wall.roster.length);
+
+  renderTiles(online);
+}
+
+// Summary tiles for the Accounts and Wall Bot views. Same numbers as the rail — the tiles
+// are the headline, the rail is the full readout — so both refresh from one place.
+function renderTiles(online) {
+  const loaded = accounts.filter((a) => a.load_enabled).length;
+
+  $('tile-total').textContent = String(accounts.length);
+  $('tile-total-f').textContent = accounts.length
+    ? `${loaded} loaded · ${accounts.length - loaded} idle`
+    : 'no accounts configured';
+
+  $('tile-online').textContent = String(online);
+  $('tile-online-bar').style.width = loaded ? `${Math.round((online / loaded) * 100)}%` : '0%';
+
+  $('tile-standby').textContent = String(Math.max(0, accounts.length - online));
+  $('tile-standby-f').textContent = loaded ? `${loaded} loaded and ready` : 'nothing loaded';
+
+  const top = leaderboard.entries[0];
+  $('tile-faction').textContent = top ? top.name : '—';
+  $('tile-faction-f').textContent = top
+    ? `${Number(top.points).toLocaleString()} pts · ${formatAgo(leaderboard.updatedAt)}`
+    : 'run the leaderboard';
+
+  const wstate = $('wtile-state');
+  wstate.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  wstate.className = 'tile-v sm' + (wall.raidActive ? ' bad' : (wall.active ? ' accent' : ''));
+  $('wtile-state-f').textContent = wall.raidActive ? 'raid alert active'
+    : wall.active ? (wall.accountOnline ? 'account online' : 'no account online')
+    : 'not running';
+
+  $('wtile-total').textContent = String(wall.totalChecks);
+  $('wtile-last').textContent = wall.lastCheckAt ? formatAgo(wall.lastCheckAt) : '—';
+  $('wtile-last-f').textContent = wall.lastCheckAt ? 'last recorded check' : 'no checks yet';
+  $('wtile-roster').textContent = String(wall.roster.length);
 }
 
 function renderWallSummary() {

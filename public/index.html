@@ -73,7 +73,10 @@
 
     <main class="main">
       <header class="topbar">
-        <h1 id="page-title" class="page-title">Accounts</h1>
+        <div class="topbar-text">
+          <h1 id="page-title" class="page-title">Accounts</h1>
+          <p id="page-sub" class="page-sub">Bot identities, load state, and connection control.</p>
+        </div>
         <div class="topbar-meta">
           <span id="online-count" class="pill">Online: 0/0</span>
         </div>
@@ -84,6 +87,31 @@
 
           <!-- ============ Accounts ============ -->
           <div id="view-bots" class="view">
+            <!-- Summary tiles. Every value is derived from data the panel already has:
+                 the accounts list, live statuses, and the parsed leaderboard. -->
+            <div class="tiles">
+              <div class="tile">
+                <span class="tile-k">Total fleet</span>
+                <span class="tile-v" id="tile-total">0</span>
+                <span class="tile-f" id="tile-total-f">no accounts configured</span>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Online</span>
+                <span class="tile-v accent" id="tile-online">0</span>
+                <div class="tile-bar"><span id="tile-online-bar"></span></div>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Standby</span>
+                <span class="tile-v" id="tile-standby">0</span>
+                <span class="tile-f" id="tile-standby-f">nothing loaded</span>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Top faction</span>
+                <span class="tile-v sm accent" id="tile-faction">—</span>
+                <span class="tile-f" id="tile-faction-f">run the leaderboard</span>
+              </div>
+            </div>
+
             <section class="card">
               <div class="card-head">
                 <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>
@@ -129,6 +157,29 @@
 
           <!-- ============ Wall Bot ============ -->
           <div id="view-wall" class="view hidden">
+            <div class="tiles">
+              <div class="tile">
+                <span class="tile-k">Engine</span>
+                <span class="tile-v sm" id="wtile-state">off</span>
+                <span class="tile-f" id="wtile-state-f">not running</span>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Total checks</span>
+                <span class="tile-v" id="wtile-total">0</span>
+                <span class="tile-f">all time</span>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Last check</span>
+                <span class="tile-v sm" id="wtile-last">—</span>
+                <span class="tile-f" id="wtile-last-f">no checks yet</span>
+              </div>
+              <div class="tile">
+                <span class="tile-k">Authorized</span>
+                <span class="tile-v" id="wtile-roster">0</span>
+                <span class="tile-f">verified players</span>
+              </div>
+            </div>
+
             <section class="card">
               <div class="card-head">
                 <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
