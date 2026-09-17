@@ -71,6 +71,15 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   in `db.js`, the `BOOL_KEYS`/`INT_KEYS` sets in `api.js`, and a `data-setting`-tagged
   input in `index.html` (the client auto-wires any `[data-setting]` element).
 - Every bot event carries `accountId`; `'all'` targets all of the user's bots.
+- `consoleLine` carries a `kind` (`chat` | `whisper` | `system` | `error`) so the console can
+  tell real server chat from the panel's own log output. Whispers are matched by regex on the
+  line (`WHISPER_RE` in `BotSession.js`) rather than mineflayer's `whisper` event, which
+  rarely fires on servers with custom `/msg` formats.
+- Live numbers (ping, position, health, uptime) arrive as a `telemetry` event every 5s from
+  `BotManager`, plus one frame when a socket opens. `BotSession.telemetry()` is the only place
+  that reads them off the mineflayer instance; uptime comes from `connectedAt` (stamped at the
+  first spawn) rather than `statusSince`, which resets on every auto-reconnect.
+- The client measures its own socket latency with a `ping`/`pong` pair handled in `hub.js`.
 - **Wall bot** state (`wallState`) streams over WS like `leaderboard` does — `hub.handleUpgrade`
   replays a snapshot on (re)connect. Inbound control messages: `wallStart`, `wallEnd`,
   `wallCheck`, `raidStart`, `raidStop`. But the stats **export/reset** and the **roster CRUD**
