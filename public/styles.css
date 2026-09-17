@@ -484,6 +484,8 @@ body {
 .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-tag { font-family: var(--mono); font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; }
 .account-status { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.3px; }
+/* Uptime · ping for a connected bot. Empty (and so invisible) for everything else. */
+.account-metrics { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .account-status.online { color: var(--accent); }
 .account-status.connecting { color: var(--amber); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: 0 0 auto; transition: background 0.25s var(--ease); }
@@ -607,6 +609,21 @@ body {
 .console-line { color: var(--text-dim); overflow-wrap: anywhere; animation: fadeIn 0.2s var(--ease); }
 .console-line .who { color: var(--accent); }
 .console-line.err { color: #f2a0a0; }
+/* Line kinds: server chat reads brightest, the panel's own log stays quiet. */
+.console-line.kind-chat { color: #cfe0d7; }
+.console-line.kind-whisper { color: #8ab4f8; }
+.console-line.kind-error { color: #f2a0a0; }
+.console-line.kind-error .who { color: var(--red); }
+
+.console-filters { display: flex; gap: 5px; flex: 0 0 auto; flex-wrap: wrap; }
+.chip-btn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-dim);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  transition: color 0.16s var(--ease), background 0.16s var(--ease), border-color 0.16s var(--ease);
+}
+.chip-btn:hover { color: var(--text); border-color: var(--border-hi); }
+.chip-btn.on { color: var(--accent); background: var(--accent-soft); border-color: rgba(16, 185, 129, 0.3); }
 .console-input-row { display: flex; gap: 10px; align-items: center; flex: 0 0 auto; }
 
 /* ---------- Modal ---------- */

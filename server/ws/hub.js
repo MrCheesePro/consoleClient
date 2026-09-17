@@ -33,13 +33,16 @@ export default class Hub {
 
       // Send current bot status so a (re)connecting client is in sync.
       ws.send(JSON.stringify({ type: 'statusSnapshot', statuses: this.botManager.statusSnapshot(userId) }));
+      // Live numbers up front, so a fresh page load shows uptime and ping without waiting
+      // for the next telemetry tick.
+      ws.send(JSON.stringify({ type: 'telemetry', bots: this.botManager.telemetrySnapshot(userId) }));
       // And the latest stored leaderboard, if any.
       const lb = this.botManager.leaderboardSnapshot(userId);
       if (lb) ws.send(JSON.stringify({ type: 'leaderboard', entries: lb.entries, updatedAt: lb.updatedAt }));
       // Wall-bot state (active flags, totals, top checkers, roster).
       ws.send(JSON.stringify(this.botManager.wallSnapshot(userId)));
 
-      ws.on('message', (raw) => this._onMessage(userId, raw));
+      ws.on('message', (raw) => this._onMessage(userId, ws, raw));
       ws.on('close', () => {
         const set = this.byUser.get(userId);
         if (set) { set.delete(ws); if (set.size === 0) this.byUser.delete(userId); }
@@ -47,7 +50,7 @@ export default class Hub {
     });
   }
 
-  _onMessage(userId, raw) {
+  _onMessage(userId, ws, raw) {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     const bm = this.botManager;
@@ -60,6 +63,10 @@ export default class Hub {
       case 'equipArmor': bm.equipArmor(userId, target); break;
       case 'useItem': bm.useItem(userId, target); break;
       case 'refreshLeaderboard': bm.refreshLeaderboard(userId); break;
+      // Echo for the client's own round-trip latency readout. Answers only the asking socket.
+      case 'ping':
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'pong', t: msg.t }));
+        break;
       case 'wallStart': bm.wallStart(userId); break;
       case 'wallEnd': bm.wallEnd(userId); break;
       case 'wallCheck': bm.manualCheck(userId, msg.player); break;

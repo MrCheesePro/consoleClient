@@ -9,6 +9,11 @@ let wall = {
   top: [], roster: [], accountOnline: false,
 };
 let ws = null;
+// Live per-bot numbers from the server's `telemetry` event, keyed by account id. Kept apart
+// from `statuses` so nothing that reads a status has to care about the richer shape.
+const telemetry = {};
+let wsLatency = null;
+let kindFilter = 'all';   // all | chat | whisper | system | error
 
 const $ = (id) => document.getElementById(id);
 const api = (path, opts = {}) =>
@@ -116,7 +121,7 @@ function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
   setConn('connecting');
-  ws.onopen = () => setConn('connected');
+  ws.onopen = () => { setConn('connected'); sendLatencyPing(); };
   ws.onmessage = (ev) => handleWs(JSON.parse(ev.data));
   ws.onclose = () => {
     setConn('reconnecting');
@@ -131,17 +136,36 @@ function setConn(state) {
   const label = { connected: 'connected', connecting: 'connecting', reconnecting: 'reconnecting' }[state] || state;
   dot.className = 'dot' + (state === 'connected' ? ' live' : state === 'reconnecting' ? ' down' : ' warn');
   $('conn-text').textContent = label;
+  if (state !== 'connected') wsLatency = null;
   const railConn = $('rail-conn');
-  railConn.textContent = label;
+  railConn.textContent = state === 'connected' && wsLatency != null ? `${wsLatency}ms` : label;
   railConn.className = 'stat-v' + (state === 'connected' ? ' good' : state === 'reconnecting' ? ' bad' : ' warn');
 }
 function wsSend(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
+// The socket has no application-level heartbeat, so the panel measures its own round trip:
+// the server echoes `ping` straight back as `pong` with the same timestamp.
+function sendLatencyPing() { wsSend({ type: 'ping', t: Date.now() }); }
+setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) sendLatencyPing(); }, 5000);
 
 function handleWs(msg) {
   switch (msg.type) {
     case 'statusSnapshot':
       Object.assign(statuses, msg.statuses);
       renderAccounts();
+      break;
+    case 'telemetry':
+      // The frame is the whole truth: a bot that has gone away drops out of it.
+      for (const key of Object.keys(telemetry)) delete telemetry[key];
+      for (const bot of msg.bots || []) {
+        telemetry[bot.accountId] = bot;
+        statuses[bot.accountId] = bot.status;
+      }
+      renderAccounts();
+      break;
+    case 'pong':
+      wsLatency = Date.now() - msg.t;
+      setConn('connected');
       break;
     case 'botStatus':
       statuses[msg.accountId] = msg.status;
@@ -235,6 +259,18 @@ function renderAccounts() {
     status.className = 'account-status ' + info.cls;
     status.textContent = info.text;
 
+    // Uptime and latency, when the bot is actually connected and the server reports them.
+    const tel = telemetry[acc.id] || {};
+    const metrics = document.createElement('span');
+    metrics.className = 'account-metrics';
+    if (statuses[acc.id] === 'online') {
+      const parts = [];
+      if (tel.connectedAt) parts.push(formatUptime(tel.connectedAt));
+      if (Number.isFinite(tel.ping)) parts.push(`${tel.ping}ms`);
+      metrics.textContent = parts.join(' · ');
+      if (Number.isFinite(tel.x)) metrics.title = `X ${tel.x} · Y ${tel.y} · Z ${tel.z}`;
+    }
+
     // Per-account connect/disconnect (footer buttons still act on all).
     const live = statuses[acc.id] === 'online' || statuses[acc.id] === 'connecting';
     const power = document.createElement('button');
@@ -252,7 +288,7 @@ function renderAccounts() {
     del.title = 'Remove account';
     del.onclick = (e) => { e.stopPropagation(); deleteAccount(acc); };
 
-    row.append(dot, name, tag, status, power, del);
+    row.append(dot, name, tag, metrics, status, power, del);
     list.appendChild(row);
   }
 
@@ -408,6 +444,16 @@ function fillAccountSelect(sel, value) {
 function renderLeaderboardAccountOptions() {
   fillAccountSelect($('set-leaderboard_account'), settings.leaderboard_account);
   fillAccountSelect($('set-wall_account'), settings.wall_account);
+}
+
+// Compact "how long has this bot been up", from the first spawn of the session.
+function formatUptime(since) {
+  const s = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m`;
+  return `${s}s`;
 }
 
 function formatAgo(ts) {
@@ -725,8 +771,19 @@ $('console-target').addEventListener('change', () => setTarget($('console-target
 function lineMatchesTarget(el) {
   const target = currentTarget();
   // Lines with no accountId (errors / system messages) always show.
-  return target === 'all' || !el.dataset.accountId || el.dataset.accountId === target;
+  const targetOk = target === 'all' || !el.dataset.accountId || el.dataset.accountId === target;
+  const kindOk = kindFilter === 'all' || el.dataset.kind === kindFilter;
+  return targetOk && kindOk;
 }
+
+// Chips filter by line kind: server chat, whispers, the panel's own log, errors.
+document.querySelectorAll('[data-kind]').forEach((btn) => {
+  btn.onclick = () => {
+    kindFilter = btn.dataset.kind;
+    document.querySelectorAll('[data-kind]').forEach((o) => o.classList.toggle('on', o === btn));
+    applyConsoleFilter();
+  };
+});
 
 function applyConsoleFilter() {
   for (const el of $('console-output').children) {
@@ -734,10 +791,12 @@ function applyConsoleFilter() {
   }
 }
 
-function appendConsole({ accountId, username, text, error }) {
+function appendConsole({ accountId, username, text, error, kind = 'system' }) {
+  const lineKind = error ? 'error' : kind;
   const out = $('console-output');
   const line = document.createElement('div');
-  line.className = 'console-line' + (error ? ' err' : '');
+  line.className = `console-line kind-${lineKind}` + (error ? ' err' : '');
+  line.dataset.kind = lineKind;
   if (accountId) line.dataset.accountId = accountId;
   if (username) {
     const who = document.createElement('span');

@@ -54,12 +54,20 @@ function buildWallExport(userId) {
   };
 }
 
+// `token_ref` is the prismarine-auth cache key for a Microsoft account. The browser never
+// needs it, so it doesn't leave the server.
+function publicAccount(account) {
+  if (!account) return account;
+  const { token_ref, ...rest } = account;
+  return rest;
+}
+
 export function createApiRouter({ botManager, emitToUser }) {
   const router = express.Router();
 
   // ---- Accounts ----
   router.get('/accounts', (req, res) => {
-    res.json(listAccounts.all(req.session.userId));
+    res.json(listAccounts.all(req.session.userId).map(publicAccount));
   });
 
   router.post('/accounts', async (req, res) => {
@@ -72,7 +80,7 @@ export function createApiRouter({ botManager, emitToUser }) {
         return res.status(400).json({ error: 'Username must be 1-16 chars (letters, digits, underscore).' });
       }
       const account = insertAccount(userId, { label: username, username, authType: 'offline' });
-      return res.status(201).json(account);
+      return res.status(201).json(publicAccount(account));
     }
 
     // Microsoft: kick off device-code flow; respond immediately, finish over WS.
@@ -85,7 +93,7 @@ export function createApiRouter({ botManager, emitToUser }) {
         emitToUser(userId, { type: 'msaCode', code });
       });
       const account = insertAccount(userId, { label: username || label, username, authType: 'microsoft', tokenRef });
-      emitToUser(userId, { type: 'accountAdded', account });
+      emitToUser(userId, { type: 'accountAdded', account: publicAccount(account) });
     } catch (e) {
       emitToUser(userId, { type: 'error', message: `Microsoft login failed: ${e.message}` });
     }
@@ -103,7 +111,7 @@ export function createApiRouter({ botManager, emitToUser }) {
   router.post('/accounts/load-all', (req, res) => {
     const userId = req.session.userId;
     setAllAccountsLoad.run(req.body?.enabled ? 1 : 0, userId);
-    res.json(listAccounts.all(userId));
+    res.json(listAccounts.all(userId).map(publicAccount));
   });
 
   router.post('/accounts/:id/load', (req, res) => {
@@ -112,7 +120,7 @@ export function createApiRouter({ botManager, emitToUser }) {
     if (!account) return res.status(404).json({ error: 'Not found' });
     const enabled = req.body?.enabled ? 1 : 0;
     setAccountLoad.run(enabled, account.id, userId);
-    res.json({ ...account, load_enabled: enabled });
+    res.json({ ...publicAccount(account), load_enabled: enabled });
   });
 
   // ---- Settings ----

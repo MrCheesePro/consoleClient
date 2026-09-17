@@ -9,6 +9,7 @@ const ACCOUNTS_PER_IP = 3; // the target server's per-IP connection cap
 const LEADERBOARD_INTERVAL_MS = 60 * 60 * 1000; // refresh the board hourly
 const LEADERBOARD_CAPTURE_MS = 4000;            // window to collect the /f top reply
 const LEADERBOARD_ONLINE_DELAY_MS = 30 * 1000;  // wait after a bot connects before auto-fetch
+const TELEMETRY_INTERVAL_MS = 5000;             // how often live bot numbers are pushed
 
 /**
  * Parse a factions `/f top` chat reply into ranked entries. Lines look like:
@@ -78,6 +79,8 @@ export default class BotManager {
     this._lbBusy = new Set();             // userIds with a refresh in flight (avoid overlap)
     // Hourly leaderboard refresh for every user that currently has bots online.
     this._leaderboardTimer = setInterval(() => this._hourlyLeaderboard(), LEADERBOARD_INTERVAL_MS);
+    // Live per-bot numbers (ping, position, health, uptime) for anyone with sessions running.
+    this._telemetryTimer = setInterval(() => this._broadcastTelemetry(), TELEMETRY_INTERVAL_MS);
     this.wallBot = new WallBot({
       emitToUser: this.emitToUser,
       resolveSession: (userId) => this._wallSession(userId),
@@ -208,6 +211,22 @@ export default class BotManager {
       if (key.startsWith(`${userId}:`)) snapshot[s.account.id] = s.status;
     }
     return snapshot;
+  }
+
+  /** Live numbers for every session a user owns. */
+  telemetrySnapshot(userId) {
+    const out = [];
+    for (const [key, s] of this.sessions) {
+      if (key.startsWith(`${userId}:`)) out.push(s.telemetry());
+    }
+    return out;
+  }
+
+  _broadcastTelemetry() {
+    const userIds = new Set([...this.sessions.keys()].map((k) => k.split(':')[0]));
+    for (const userId of userIds) {
+      this.emitToUser(userId, { type: 'telemetry', bots: this.telemetrySnapshot(userId) });
+    }
   }
 
   // ---- Leaderboard ----

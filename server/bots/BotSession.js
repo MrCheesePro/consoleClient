@@ -15,6 +15,10 @@ const RECONNECT_BASE_MS = 5000;
 const RECONNECT_MAX_MS = 60000;
 const ANTI_AFK_INTERVAL_MS = 15000;
 
+// Servers running custom /msg formats rarely fire mineflayer's own `whisper` event, so
+// whispers are recognised from the raw chat line instead. Used only to tag console lines.
+const WHISPER_RE = /(\bwhispers?\b|\/msg\b|->\s*me\b|\bfrom\b\s+\w+\s*:)/i;
+
 function parseAddress(serverIp) {
   const raw = String(serverIp || '').trim();
   const [host, portStr] = raw.split(':');
@@ -39,6 +43,8 @@ export default class BotSession {
 
     this.bot = null;
     this.status = 'offline';     // offline | connecting | online
+    this.statusSince = Date.now(); // when `status` last changed
+    this.connectedAt = null;     // first spawn of this session; survives auto-reconnects
     this.stopped = false;
     this.spawnCount = 0;
     this.reconnectAttempts = 0;
@@ -55,6 +61,7 @@ export default class BotSession {
   stop() {
     this.stopped = true;
     this._clearTimers();
+    this.connectedAt = null;
     this._setStatus('offline');
     if (this.bot) {
       try { this.bot.quit(); } catch { /* ignore */ }
@@ -209,7 +216,9 @@ export default class BotSession {
       const text = String(msg);
       // The console is redacted; the observer gets the raw line because the wall bot has to
       // compare the verify password against it.
-      if (this.settings.show_chat) this._console(this._redact(text));
+      if (this.settings.show_chat) {
+        this._console(this._redact(text), WHISPER_RE.test(text) ? 'whisper' : 'chat');
+      }
       // An observer must never be able to take the chat listener down with it.
       if (this.onChat) { try { this.onChat(text); } catch { /* ignore */ } }
     });
@@ -220,6 +229,9 @@ export default class BotSession {
 
   _onSpawn() {
     this.reconnectAttempts = 0;
+    // `statusSince` resets on every auto-reconnect, so it can't stand in for how long this
+    // bot has been deployed. Stamp the first spawn separately and keep it across reconnects.
+    if (!this.connectedAt) this.connectedAt = Date.now();
     this._setStatus('online');
     this.spawnCount++;
 
@@ -247,8 +259,8 @@ export default class BotSession {
     this.bot = null;
     if (this.stopped) { this._setStatus('offline'); return; }
     this._console(`Disconnected${reason ? `: ${reason}` : ''}.`);
-    if (this.settings.auto_reconnect) this._scheduleReconnect();
-    else this._setStatus('offline');
+    if (this.settings.auto_reconnect) { this._scheduleReconnect(); }
+    else { this.connectedAt = null; this._setStatus('offline'); }
   }
 
   _scheduleReconnect() {
@@ -340,7 +352,35 @@ export default class BotSession {
   _setStatus(status) {
     if (this.status === status) return;
     this.status = status;
-    this.emit('botStatus', { accountId: this.account.id, status });
+    this.statusSince = Date.now();
+    this.emit('botStatus', { accountId: this.account.id, status, since: this.statusSince });
+  }
+
+  // Server-reported latency for this bot's own player entry (ms), or null when unknown.
+  // Some 1.8-era and ViaVersion-fronted servers report 0 here.
+  get ping() {
+    const p = this.bot?.player?.ping;
+    return this.status === 'online' && Number.isFinite(p) ? p : null;
+  }
+
+  /** Live numbers for the panel. Anything the bot can't report right now is null. */
+  telemetry() {
+    const online = this.status === 'online';
+    const pos = online ? this.bot?.entity?.position : null;
+    const num = (v) => (Number.isFinite(v) ? v : null);
+    return {
+      accountId: this.account.id,
+      status: this.status,
+      ping: this.ping,
+      health: online ? num(this.bot?.health) : null,
+      food: online ? num(this.bot?.food) : null,
+      x: pos ? Math.round(pos.x) : null,
+      y: pos ? Math.round(pos.y) : null,
+      z: pos ? Math.round(pos.z) : null,
+      proxy: this.proxy ? `${this.proxy.host}:${this.proxy.port}` : null,
+      connectedAt: this.connectedAt,
+      statusSince: this.statusSince,
+    };
   }
 
   // The verify password travels through chat as plain text, so a player whispering it would
@@ -352,11 +392,16 @@ export default class BotSession {
     return text.split(secret).join('***');
   }
 
-  _console(text) {
-    this.emit('consoleLine', { accountId: this.account.id, username: this.account.username, text });
+  // `kind` lets the console separate real server chat from the panel's own log lines:
+  // 'chat' | 'whisper' | 'system' | 'error'.
+  _console(text, kind = 'system') {
+    this.emit('consoleLine', { accountId: this.account.id, username: this.account.username, text, kind });
   }
 
   _err(text) {
-    this.emit('consoleLine', { accountId: this.account.id, username: this.account.username, text: `[error] ${text}` });
+    this.emit('consoleLine', {
+      accountId: this.account.id, username: this.account.username,
+      text: `[error] ${text}`, kind: 'error',
+    });
   }
 }

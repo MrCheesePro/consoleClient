@@ -400,6 +400,15 @@
                 </select>
               </div>
               <div class="card-body card-body-tall">
+                <!-- Filter by line kind. The server tags each line: server chat, a whisper,
+                     the panel's own log output, or an error. -->
+                <div class="console-filters">
+                  <button class="chip-btn on" data-kind="all">All</button>
+                  <button class="chip-btn" data-kind="chat">Chat</button>
+                  <button class="chip-btn" data-kind="whisper">Whispers</button>
+                  <button class="chip-btn" data-kind="system">System</button>
+                  <button class="chip-btn" data-kind="error">Errors</button>
+                </div>
                 <div id="console-output" class="console-output"></div>
 
                 <div class="console-input-row">
