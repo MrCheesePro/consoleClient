@@ -143,7 +143,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `IDLE` with no known holder is assumed ours (the claim was missed while offline). Blank
   `raid_outpost_faction` keeps it all inert. It never touches the wall loop or wall counters. Only
   ownership changes (we claimed it, someone took it from us, our 12h hold ended) are announced, and
-  only to Discord (`_raidOutpostNotice`, raid channel → wall fallback) — the server already says them in game.
+  only to Discord (`_raidOutpostNotice`). Those notices use the `raid_outpost` channel:
+  `raid_outpost_discord_webhook` whenever it is non-empty (no toggle), else the wall webhook.
+  Outpost *reminders* go to the wall channel with the wall reminders — the server already says them in game.
 - Reminder modes in `_tick`: `grace_period` and quiet hours both pause walls (leaving either
   restarts the wall count via `quietEndedAt`). Outpost live + not paused → combined line whenever
   either side is due; paused + outpost live → raid line only (still sent in-game and to Discord);

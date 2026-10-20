@@ -191,8 +191,8 @@
                   <button id="wall-start" class="btn btn-pill">Start</button>
                   <button id="wall-end" class="btn btn-pill">Stop</button>
                   <button id="wall-check" class="btn btn-pill">Mark checked</button>
-                  <button id="raid-start" class="btn btn-pill btn-warn">Raid</button>
-                  <button id="raid-stop" class="btn btn-pill">Raid off</button>
+                  <button id="raid-start" class="btn btn-pill btn-warn">Weewoo</button>
+                  <button id="raid-stop" class="btn btn-pill">Weewoo off</button>
                 </div>
 
                 <div id="wall-summary" class="muted-note"></div>
@@ -319,6 +319,10 @@
                   <label class="settings-label">Raid Outpost + walls reminder</label>
                   <input class="text-input" data-setting="raid_outpost_combined_message"
                     placeholder="Check Raid Outpost | Walls ... Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]" />
+
+                  <label class="settings-label">Raid Outpost claimed/lost webhook</label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
+                    data-setting="raid_outpost_discord_webhook" />
                 </div>
 
                 <p class="hint"><strong>Messages</strong> — each line of a message is sent as its
@@ -336,17 +340,20 @@
                   so only the outpost is reminded; quiet hours mute walls but the outpost prompt
                   still goes out.</p>
 
+                <p class="hint"><strong>Raid Outpost claimed/lost webhook</strong> — only the
+                  ownership news goes here: we claimed it, someone took it from us, our 12-hour hold
+                  ended. Leave it blank and that news falls back to the wall webhook. Raid Outpost
+                  reminders always go with the wall reminders.</p>
+
                 <p class="hint"><strong>Discord embed body</strong> — Discord posts arrive as an
                   embed with a coloured bar, a title and a timestamp. This field is the body of the
                   reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
-                  than the in-game line. Raid alerts reuse their own chat text as the body.</p>
+                  than the in-game line. Weewoo alerts use their own Weewoo Discord body.</p>
 
                 <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
                   posts a log embed: the player's head and name, when the walls were confirmed
-                  clear, how long since the previous check, and their raid/wall check counts. A
-                  check logged while a raid alert is running counts as a <em>raid</em> check
-                  instead of a wall check. Leave the toggle off and these follow the wall bot's
-                  Discord settings; leave the URL blank and they fall back there too. The player
+                  clear, how long since the previous check, and their Raid Outpost/wall check
+                  counts. Leave the toggle off and these follow the wall bot's Discord settings; leave the URL blank and they fall back there too. The player
                   head is fetched by Discord from <code>mc-heads.net</code>.</p>
 
                 <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
@@ -355,32 +362,32 @@
                   Anything else is treated as a custom <code>/regex/</code> capturing the player
                   name then the message.</p>
 
-                <h4 class="card-subhead">Raid alerts</h4>
+                <h4 class="card-subhead">Weewoo alerts</h4>
                 <div class="settings-grid">
-                  <label class="settings-label">Enable raid alerts</label>
+                  <label class="settings-label">Enable weewoo alerts</label>
                   <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
 
-                  <label class="settings-label">Raid message<br>
+                  <label class="settings-label">Weewoo message<br>
                     <span class="label-sub">in-game chat</span></label>
                   <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
 
-                  <label class="settings-label">Raid Discord body</label>
+                  <label class="settings-label">Weewoo Discord body</label>
                   <input class="text-input" placeholder="Check walls immediately and get online."
                     data-setting="raid_discord_message" />
 
-                  <label class="settings-label">Raid repeat (ms)</label>
+                  <label class="settings-label">Weewoo repeat (ms)</label>
                   <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
 
-                  <label class="settings-label">Raid on triggers</label>
+                  <label class="settings-label">Weewoo on triggers</label>
                   <input class="text-input" placeholder="weewoo" data-setting="raid_trigger" />
 
-                  <label class="settings-label">Raid off triggers</label>
+                  <label class="settings-label">Weewoo off triggers</label>
                   <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
 
-                  <label class="settings-label">Raid to its own Discord</label>
+                  <label class="settings-label">Weewoo to its own Discord</label>
                   <button class="toggle" data-setting="raid_to_discord" aria-pressed="false"></button>
 
-                  <label class="settings-label">Raid webhook URL</label>
+                  <label class="settings-label">Weewoo webhook URL</label>
                   <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
                     data-setting="raid_discord_webhook" />
                 </div>
@@ -389,23 +396,23 @@
                   or a <code>/regex/</code> literal. Messages are sent exactly as written — start
                   them with <code>/f c </code> to scope them to faction chat.</p>
 
-                <p class="hint"><strong>While a raid alert is running, wall reminders stop</strong>
+                <p class="hint"><strong>While a weewoo alert is running, wall reminders stop</strong>
                   and resume when it's turned off. The Discord alert repeats on the interval below
                   with a TNT icon, the raid headline, and a running <em>time since alert</em>;
                   clearing it posts how long the alert lasted. Reminders also pause during quiet
                   hours.</p>
 
-                <p class="hint"><strong>Raid webhook</strong> — leave the toggle off and raid
+                <p class="hint"><strong>Weewoo webhook</strong> — leave the toggle off and weewoo
                   alerts follow the wall bot's Discord settings above. Turn it on with a URL set,
-                  and raids go to that channel instead, so alarms can live somewhere noisier than
-                  routine wall checks. If the toggle is on but the URL is blank, raids fall back to
+                  and weewoo alerts go to that channel instead, so alarms can live somewhere noisier than
+                  routine wall checks. If the toggle is on but the URL is blank, weewoo alerts fall back to
                   the wall webhook rather than going nowhere.</p>
 
                 <p class="hint"><strong>Quiet hours</strong> — reminders stop, and in-game checks
                   are refused with a note rather than counted. When the window lifts, the unchecked
                   count restarts from zero, so the first message of the day isn't a number covering
                   the whole night. The panel's <em>Mark checked</em> button still works as an
-                  operator override, and raid alerts are never gated — a raid is an emergency
+                  operator override, and weewoo alerts are never gated — a raid is an emergency
                   whenever it lands.</p>
 
                 <p class="hint">Quiet hours use <strong>the panel server's clock</strong>, not

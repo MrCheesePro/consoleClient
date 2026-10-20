@@ -1481,3 +1481,44 @@ test('outpost ownership changes post to Discord only; going live posts nothing',
     assert.deepEqual(wb._stateFor(USER).queue, [], 'nothing goes to game chat');
   } finally { wb.stopAll(); db.updateSettings(USER, { wall_to_minecraft: 0, wall_to_discord: 0 }); }
 });
+
+test('Raid Outpost messages use their own webhook, falling back to the wall one', async () => {
+  const { wb, session } = raidOutpostHarness({
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    raid_to_discord: 1, raid_discord_webhook: 'https://discord.test/raid',
+    raid_outpost_discord_webhook: 'https://discord.test/outpost',
+  });
+  try {
+    let posts = await capturePost(async () => {
+      wb.handleChat(USER, session, '(!) TurtleGang have claimed the Raid Outpost!');
+    });
+    assert.deepEqual(posts.map((p) => p.url), ['https://discord.test/outpost'], 'not the weewoo channel');
+
+    db.updateSettings(USER, { raid_outpost_discord_webhook: '' });
+    posts = await capturePost(async () => {
+      wb.handleChat(USER, session, '(!) Enemies have claimed the Raid Outpost!');
+    });
+    assert.deepEqual(posts.map((p) => p.url), ['https://discord.test/wall'], 'blank URL falls back');
+  } finally {
+    wb.stopAll();
+    db.updateSettings(USER, { wall_to_discord: 0, raid_to_discord: 0, raid_outpost_discord_webhook: '' });
+  }
+});
+
+test('Raid Outpost reminders go to the wall webhook even with an outpost webhook set', async () => {
+  const { wb, session } = raidOutpostHarness({
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    raid_outpost_discord_webhook: 'https://discord.test/outpost',
+  });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    goLive(wb, session);
+    state.lastRaidCheckAt = Date.now() - 5 * 60000;
+    const posts = await capturePost(async () => wb._tick());
+    assert.deepEqual(posts.map((p) => p.url), ['https://discord.test/wall']);
+  } finally {
+    wb.stopAll();
+    db.updateSettings(USER, { wall_to_discord: 0, raid_outpost_discord_webhook: '' });
+  }
+});

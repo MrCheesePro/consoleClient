@@ -288,7 +288,7 @@ export default class WallBot {
   raidStart(userId) {
     const settings = getSettings.get(userId);
     if (!settings?.raid_enabled) {
-      this._error(userId, 'Raid alerts are disabled — turn them on in Settings first.');
+      this._error(userId, 'Weewoo alerts are disabled — turn them on in Settings first.');
       return;
     }
     this._beginRaid(userId, settings, null);
@@ -512,10 +512,10 @@ export default class WallBot {
     return true;
   }
 
-  // Ownership changes go to Discord only (raid channel, falling back to wall) — the server already
-  // announces them in game, so echoing them into chat would just be noise.
+  // Ownership changes go to Discord only (Raid Outpost webhook, falling back to wall) — the server
+  // already announces them in game, so echoing them into chat would just be noise.
   _raidOutpostNotice(userId, color, text) {
-    this._send(userId, text, { channel: 'raid', minecraft: false, embed: { color, description: `**${text}**` } });
+    this._send(userId, text, { channel: 'raid_outpost', minecraft: false, embed: { color, description: `**${text}**` } });
   }
 
   _resetRaidOutpost(state) {
@@ -627,7 +627,7 @@ export default class WallBot {
   _beginRaid(userId, settings, byPlayer) {
     const state = this._stateFor(userId);
     if (state.raidActive) {
-      if (byPlayer) this._whisper(userId, byPlayer, 'Raid alert is already active.');
+      if (byPlayer) this._whisper(userId, byPlayer, 'Weewoo alert is already active.');
       return;
     }
     state.raidActive = true;
@@ -637,7 +637,7 @@ export default class WallBot {
     // 0s and every repost would carry the opening timestamp.
     this._sendRaidAlert(userId);
     state.raidTimer = setInterval(() => this._sendRaidAlert(userId), delay);
-    this._console(userId, `Raid alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
+    this._console(userId, `Weewoo alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
 
@@ -666,7 +666,7 @@ export default class WallBot {
   _endRaid(userId, byPlayer) {
     const state = this._stateFor(userId);
     if (!state.raidActive) {
-      if (byPlayer) this._whisper(userId, byPlayer, 'No raid alert is active.');
+      if (byPlayer) this._whisper(userId, byPlayer, 'No weewoo alert is active.');
       return;
     }
     const lasted = state.raidStartedAt ? Date.now() - state.raidStartedAt : 0;
@@ -674,18 +674,18 @@ export default class WallBot {
     state.raidStartedAt = 0;
     clearInterval(state.raidTimer);
     state.raidTimer = null;
-    this._send(userId, 'Raid alert cleared.', {
+    this._send(userId, 'Weewoo alert cleared.', {
       channel: 'raid',
       embed: {
         color: COLOR_MUTED,
-        author: { name: 'Raid alert cleared.', icon_url: TNT_ICON },
+        author: { name: 'Weewoo alert cleared.', icon_url: TNT_ICON },
         fields: [
           { name: 'Alert lasted', value: `\`${formatDuration(lasted)}\``, inline: true },
         ],
         footer: { text: this.resolveSession(userId)?.account?.username || 'wallbot' },
       },
     });
-    this._console(userId, `Raid alert stopped${byPlayer ? ` by ${byPlayer}` : ''}.`);
+    this._console(userId, `Weewoo alert stopped${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
 
@@ -762,7 +762,8 @@ export default class WallBot {
         };
       }
       this._send(userId, fillPlaceholders(template, values), {
-        channel: live ? 'raid' : 'wall',
+        // Reminders, outpost ones included, share the wall channel — they are the same alert.
+        channel: 'wall',
         embed: { color: COLOR_ALERT, ...embed },
       });
       if (wallDue) state.lastReminderAt = now;
@@ -819,14 +820,18 @@ export default class WallBot {
       if (minecraft && settings?.wall_to_minecraft) this._enqueue(userId, line, line);
     }
 
-    // Raid alerts and check logs can each go to their own channel. Without a webhook of their own
-    // they fall back to the wall routing, so an unfilled field never silently drops a message.
+    // Raid alerts, Raid Outpost notices and check logs can each go to their own channel. Without a
+    // webhook of their own they fall back to the wall routing, so an unfilled field never silently
+    // drops a message.
     const useRaid = channel === 'raid' && settings?.raid_to_discord && settings.raid_discord_webhook;
     const useCheck = channel === 'check' && settings?.check_to_discord && settings.check_discord_webhook;
+    // Raid Outpost ownership news needs no toggle: filling in the URL is the opt-in.
+    const useOutpost = channel === 'raid_outpost' && settings?.raid_outpost_discord_webhook;
     const webhook = useRaid ? settings.raid_discord_webhook
       : useCheck ? settings.check_discord_webhook
-        : settings?.wall_discord_webhook;
-    const enabled = useRaid || useCheck || settings?.wall_to_discord;
+        : useOutpost ? settings.raid_outpost_discord_webhook
+          : settings?.wall_discord_webhook;
+    const enabled = useRaid || useCheck || useOutpost || settings?.wall_to_discord;
     // Discord gets it as one post — line breaks read fine there and it avoids N pings.
     if (enabled && webhook) {
       this._postDiscord(userId, webhook, lines.join('\n'), embed);

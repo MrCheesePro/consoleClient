@@ -69,7 +69,7 @@ const VIEW_TITLES = {
 };
 const VIEW_SUBS = {
   bots: 'Bot identities, load state, and connection control.',
-  wall: 'Wall check tracking, player verification, and raid alerts.',
+  wall: 'Wall check tracking, player verification, Raid Outpost and weewoo alerts.',
   console: 'Multi-bot terminal and chat broadcast.',
   settings: 'Connection routing, login macros, and automation behavior.',
 };
@@ -600,7 +600,7 @@ function renderRail() {
   $('rail-online').textContent = `${online}/${accounts.length}`;
 
   const state = $('rail-wall');
-  state.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  state.textContent = wall.raidActive ? 'WEEWOO' : (wall.active ? 'running' : 'off');
   state.className = 'stat-v' + (wall.raidActive ? ' bad' : (wall.active ? ' good' : ''));
 
   $('rail-last').textContent = wall.lastCheckAt ? formatAgo(wall.lastCheckAt) : '—';
@@ -633,9 +633,9 @@ function renderTiles(online) {
     : 'run the leaderboard';
 
   const wstate = $('wtile-state');
-  wstate.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  wstate.textContent = wall.raidActive ? 'WEEWOO' : (wall.active ? 'running' : 'off');
   wstate.className = 'tile-v sm' + (wall.raidActive ? ' bad' : (wall.active ? ' accent' : ''));
-  $('wtile-state-f').textContent = wall.raidActive ? 'raid alert active'
+  $('wtile-state-f').textContent = wall.raidActive ? 'weewoo alert active'
     : wall.active ? (wall.accountOnline ? 'account online' : 'no account online')
     : 'not running';
 
@@ -661,7 +661,7 @@ function renderWallSummary() {
 
 function renderWallBot() {
   const state = $('wall-state');
-  state.textContent = wall.raidActive ? 'RAID' : (wall.active ? 'running' : 'off');
+  state.textContent = wall.raidActive ? 'WEEWOO' : (wall.active ? 'running' : 'off');
   state.className = 'wall-state' + (wall.raidActive ? ' raid' : (wall.active ? ' on' : ''));
 
   renderWallSummary();
