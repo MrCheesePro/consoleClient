@@ -115,7 +115,10 @@ db.exec(`
     raid_outpost_trigger       TEXT    NOT NULL DEFAULT 'raid',
     raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}',
     raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}',
-    raid_outpost_discord_webhook TEXT NOT NULL DEFAULT ''
+    raid_outpost_discord_webhook TEXT NOT NULL DEFAULT '',
+    discord_ping_role     TEXT    NOT NULL DEFAULT '',
+    ping_weewoo           INTEGER NOT NULL DEFAULT 1,
+    ping_raid_outpost     INTEGER NOT NULL DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -199,6 +202,9 @@ db.exec(`
   addColumn('raid_outpost_trigger', `raid_outpost_trigger TEXT NOT NULL DEFAULT 'raid'`);
   addColumn('raid_outpost_reminder_message', `raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}'`);
   addColumn('raid_outpost_discord_webhook', `raid_outpost_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('discord_ping_role', `discord_ping_role TEXT NOT NULL DEFAULT ''`);
+  addColumn('ping_weewoo', `ping_weewoo INTEGER NOT NULL DEFAULT 1`);
+  addColumn('ping_raid_outpost', `ping_raid_outpost INTEGER NOT NULL DEFAULT 1`);
   addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
 }
 
@@ -319,6 +325,7 @@ const SETTINGS_FIELDS = [
   'grace_period', 'raid_outpost_faction', 'raid_outpost_trigger',
   'raid_outpost_reminder_message', 'raid_outpost_combined_message',
   'raid_outpost_discord_webhook',
+  'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost',
 ];
 
 export function updateSettings(userId, patch) {

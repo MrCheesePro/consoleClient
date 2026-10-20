@@ -11,7 +11,8 @@ import {
 const COLOR_ALERT = 0xED4245; // red — reminders and raids
 const COLOR_OK = 0x57F287;    // green — a check landed
 const COLOR_MUTED = 0x99AAB5; // grey — an all-clear
-const COLOR_LOG = 0x22D3EE;   // cyan — the check log
+const COLOR_LOG = 0x22D3EE;   // cyan — the check log (walls)
+const COLOR_RAID_LOG = 0x9B59B6; // purple — the check log (Raid Outpost)
 const COLOR_BOARD = 0xF1C40F; // gold — the factions leaderboard
 
 // Player head for the log embed's author line. Discord fetches this itself, so the player's name
@@ -186,6 +187,15 @@ export function formatClock(date) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} `
     + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
+ * A Discord role ID from the ping setting. Accepts the bare ID or the copied mention form
+ * `<@&123…>`. Anything else returns null, so a typo never turns into a stray ping.
+ */
+export function parseRoleId(value) {
+  const m = /^\s*(?:<@&)?(\d{5,25})>?\s*$/.exec(String(value ?? ''));
+  return m ? m[1] : null;
 }
 
 /** Six-digit confirmation code. randomInt, not Math.random — this is a credential. */
@@ -515,7 +525,11 @@ export default class WallBot {
   // Ownership changes go to Discord only (Raid Outpost webhook, falling back to wall) — the server
   // already announces them in game, so echoing them into chat would just be noise.
   _raidOutpostNotice(userId, color, text) {
-    this._send(userId, text, { channel: 'raid_outpost', minecraft: false, embed: { color, description: `**${text}**` } });
+    const settings = getSettings.get(userId);
+    this._send(userId, text, {
+      channel: 'raid_outpost', minecraft: false, embed: { color, description: `**${text}**` },
+      ping: !!settings?.ping_raid_outpost,
+    });
   }
 
   _resetRaidOutpost(state) {
@@ -604,7 +618,7 @@ export default class WallBot {
       this._send(userId, fillPlaceholders(template, values), {
         channel: 'check',
         embed: {
-          color: COLOR_LOG,
+          color: raid ? COLOR_RAID_LOG : COLOR_LOG,
           author: {
             name: `${player} recorded a ${raid ? 'RAID OUTPOST CHECK' : 'WALL CHECK'}.`,
             icon_url: HEAD_URL(player),
@@ -635,14 +649,15 @@ export default class WallBot {
     const delay = Math.max(3000, Number(settings.raid_delay_ms) || 15000);
     // Rebuilt on every repeat, not captured once — otherwise "time since alert" would freeze at
     // 0s and every repost would carry the opening timestamp.
-    this._sendRaidAlert(userId);
+    // Only the opening alert pings the role; the repeats every few seconds stay silent.
+    this._sendRaidAlert(userId, { first: true });
     state.raidTimer = setInterval(() => this._sendRaidAlert(userId), delay);
     this._console(userId, `Weewoo alert started${byPlayer ? ` by ${byPlayer}` : ''}.`);
     this.broadcast(userId);
   }
 
   /** One raid alert: in-game text plus the Discord embed, with the elapsed time refreshed. */
-  _sendRaidAlert(userId) {
+  _sendRaidAlert(userId, { first = false } = {}) {
     const settings = getSettings.get(userId);
     const state = this._stateFor(userId);
     const startedAt = state.raidStartedAt || Date.now();
@@ -650,6 +665,7 @@ export default class WallBot {
 
     this._send(userId, message, {
       channel: 'raid',
+      ping: first && !!settings.ping_weewoo,
       embed: {
         color: COLOR_ALERT,
         author: { name: RAID_TITLE, icon_url: TNT_ICON },
@@ -810,7 +826,7 @@ export default class WallBot {
    * (say) a public call-out with a private status whisper. The outbound queue still spaces them,
    * so a two-line reminder goes out 1.5s apart rather than as a burst.
    */
-  _send(userId, text, { channel = 'wall', embed = null, minecraft = true } = {}) {
+  _send(userId, text, { channel = 'wall', embed = null, minecraft = true, ping = false } = {}) {
     const settings = getSettings.get(userId);
     const lines = String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
@@ -834,7 +850,7 @@ export default class WallBot {
     const enabled = useRaid || useCheck || useOutpost || settings?.wall_to_discord;
     // Discord gets it as one post — line breaks read fine there and it avoids N pings.
     if (enabled && webhook) {
-      this._postDiscord(userId, webhook, lines.join('\n'), embed);
+      this._postDiscord(userId, webhook, lines.join('\n'), embed, ping ? parseRoleId(settings.discord_ping_role) : null);
     }
   }
 
@@ -912,7 +928,7 @@ export default class WallBot {
     }, wait);
   }
 
-  async _postDiscord(userId, webhook, text, embed = null) {
+  async _postDiscord(userId, webhook, text, embed = null, pingRole = null) {
     // An embed gives the message a coloured bar, a bold title and a rendered timestamp. Without
     // one we fall back to a plain content post, so nothing depends on the embed being supplied.
     let body;
@@ -926,6 +942,12 @@ export default class WallBot {
       body = { embeds: [built] };
     } else {
       body = { content: text };
+    }
+    // Embeds never ping, so a role mention has to ride in `content`. allowed_mentions limits the
+    // post to exactly that role — nothing else in the message can ping anyone.
+    if (pingRole) {
+      body.content = `<@&${pingRole}>${body.content ? ` ${body.content}` : ''}`;
+      body.allowed_mentions = { roles: [pingRole] };
     }
     try {
       const res = await fetch(webhook, {

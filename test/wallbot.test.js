@@ -1522,3 +1522,111 @@ test('Raid Outpost reminders go to the wall webhook even with an outpost webhook
     db.updateSettings(USER, { wall_to_discord: 0, raid_outpost_discord_webhook: '' });
   }
 });
+
+// ---- leaderboard runner ----
+
+test('only the designated leaderboard account ever runs the command', async () => {
+  const { default: BotManager } = await import('../server/bots/BotManager.js');
+  const errors = [];
+  const bm = new BotManager({ emitToUser: (_u, m) => { if (m.type === 'error') errors.push(m.message); } });
+  const ran = [];
+  const fake = (id, status = 'online') => ({
+    status, account: { id, username: `bot${id}` },
+    runCommandCapture: async () => { ran.push(id); return []; },
+  });
+  try {
+    db.updateSettings(USER, { leaderboard_enabled: 1, leaderboard_account: '2' });
+    bm.sessions.set(`${USER}:1`, fake(1));
+    bm.sessions.set(`${USER}:2`, fake(2, 'offline'));
+
+    // Designated account offline: no fallback to bot 1.
+    await bm.refreshLeaderboard(USER);
+    assert.deepEqual(ran, []);
+    assert.match(errors.pop(), /leaderboard account is offline/);
+
+    // A new account coming online doesn't schedule a run; the designated one does.
+    bm.sessions.set(`${USER}:3`, fake(3));
+    bm._maybeAutoRefreshLeaderboard(USER, 3);
+    assert.equal(bm._lbAutoTimers.size, 0);
+    bm.sessions.get(`${USER}:2`).status = 'online';
+    bm._maybeAutoRefreshLeaderboard(USER, 2);
+    assert.equal(bm._lbAutoTimers.size, 1);
+
+    await bm.refreshLeaderboard(USER);
+    assert.deepEqual(ran, [2]);
+  } finally {
+    for (const t of bm._lbAutoTimers.values()) clearTimeout(t);
+    clearInterval(bm._leaderboardTimer);
+    clearInterval(bm._telemetryTimer);
+    bm.wallBot.stopAll();
+    db.updateSettings(USER, { leaderboard_enabled: 0, leaderboard_account: '' });
+  }
+});
+
+test('a raid check posts its own log embed to the logs channel', async () => {
+  const { wb, session } = raidOutpostHarness({
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    check_to_discord: 1, check_discord_webhook: 'https://discord.test/logs',
+  });
+  try {
+    goLive(wb, session);
+    const posts = await capturePost(async () => wb.handleChat(USER, session, 'acesoft: raid'));
+    const logs = posts.filter((p) => p.url === 'https://discord.test/logs');
+    assert.equal(logs.length, 1);
+    const embed = logs[0].body.embeds[0];
+    assert.equal(embed.author.name, 'acesoft recorded a RAID OUTPOST CHECK.');
+    assert.equal(embed.color, 0x9B59B6, 'purple, so it stands apart from the cyan wall log');
+    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
+    assert.equal(byName['Raid Checks'], '`1`');
+    assert.equal(byName['Wall Checks'], '`0`');
+  } finally {
+    wb.stopAll();
+    db.updateSettings(USER, { wall_to_discord: 0, check_to_discord: 0, check_discord_webhook: '' });
+  }
+});
+
+// ---- role ping ----
+
+const { parseRoleId } = await import('../server/bots/WallBot.js');
+
+test('parseRoleId accepts a bare ID or a copied mention, and nothing else', () => {
+  assert.equal(parseRoleId('123456789012345678'), '123456789012345678');
+  assert.equal(parseRoleId(' <@&123456789012345678> '), '123456789012345678');
+  assert.equal(parseRoleId('@raiders'), null);
+  assert.equal(parseRoleId(''), null);
+});
+
+test('weewoo pings the role on its first post only, limited to that role', async () => {
+  const { wb } = raidOutpostHarness({
+    raid_enabled: 1, raid_delay_ms: 3000, wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    discord_ping_role: '<@&111222333444555666>', ping_weewoo: 1,
+  });
+  try {
+    let posts = await capturePost(async () => wb.raidStart(USER));
+    assert.equal(posts[0].body.content, '<@&111222333444555666>');
+    assert.deepEqual(posts[0].body.allowed_mentions, { roles: ['111222333444555666'] });
+    posts = await capturePost(async () => wb._sendRaidAlert(USER));
+    assert.equal(posts[0].body.content, undefined, 'repeats stay silent');
+  } finally {
+    wb.stopAll();
+    db.updateSettings(USER, { raid_enabled: 0, wall_to_discord: 0, discord_ping_role: '' });
+  }
+});
+
+test('Raid Outpost claimed pings when its toggle is on, and not when off', async () => {
+  const { wb, session } = raidOutpostHarness({
+    wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+    discord_ping_role: '111222333444555666', ping_raid_outpost: 1,
+  });
+  try {
+    let posts = await capturePost(async () => wb.handleChat(USER, session, '(!) TurtleGang have claimed the Raid Outpost!'));
+    assert.equal(posts[0].body.content, '<@&111222333444555666>');
+    db.updateSettings(USER, { ping_raid_outpost: 0 });
+    posts = await capturePost(async () => wb.handleChat(USER, session, '(!) Enemies have claimed the Raid Outpost!'));
+    assert.equal(posts[0].body.content, undefined);
+    assert.equal(posts[0].body.allowed_mentions, undefined);
+  } finally {
+    wb.stopAll();
+    db.updateSettings(USER, { wall_to_discord: 0, discord_ping_role: '', ping_raid_outpost: 1 });
+  }
+});

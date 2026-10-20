@@ -103,7 +103,7 @@ export default class BotManager {
         // The wall card shows whether an account is available to talk through, so it has to
         // repaint whenever a bot connects or drops.
         this.wallBot.broadcast(userId);
-        if (payload && payload.status === 'online') this._maybeAutoRefreshLeaderboard(userId);
+        if (payload && payload.status === 'online') this._maybeAutoRefreshLeaderboard(userId, payload.accountId);
       }
     };
   }
@@ -247,22 +247,40 @@ export default class BotManager {
     return out;
   }
 
-  /** Have a bot run the leaderboard command, parse the reply, persist + broadcast it. */
-  async refreshLeaderboard(userId) {
+  /**
+   * The one session allowed to run the leaderboard command. A designated account is the only
+   * one that ever runs it — no falling back to another bot, so loading a fresh account never
+   * makes it type the command. Left on Auto, the first online bot runs it.
+   */
+  _leaderboardSession(userId, settings) {
+    if (settings.leaderboard_account) {
+      const s = this.sessions.get(this._key(userId, settings.leaderboard_account));
+      return s && s.status === 'online' ? s : null;
+    }
+    return this._onlineSessionsFor(userId)[0] || null;
+  }
+
+  /**
+   * Have the leaderboard bot run the command, parse the reply, persist + broadcast it.
+   * `quiet` skips the "no bot" error for the automatic runs, which would otherwise repeat it
+   * every hour while the designated account is offline.
+   */
+  async refreshLeaderboard(userId, { quiet = false } = {}) {
     const settings = getSettings.get(userId);
     if (!settings || !settings.leaderboard_enabled) return;
     if (this._lbBusy.has(userId)) return; // one refresh at a time per user
     const command = settings.leaderboard_command || '/f top';
 
-    // Prefer the designated account; fall back to any online bot.
-    let session = null;
-    if (settings.leaderboard_account) {
-      const s = this.sessions.get(this._key(userId, settings.leaderboard_account));
-      if (s && s.status === 'online') session = s;
-    }
-    if (!session) session = this._onlineSessionsFor(userId)[0] || null;
+    const session = this._leaderboardSession(userId, settings);
     if (!session) {
-      this.emitToUser(userId, { type: 'error', message: 'Leaderboard: no online bot to run the command.' });
+      if (!quiet) {
+        this.emitToUser(userId, {
+          type: 'error',
+          message: settings.leaderboard_account
+            ? 'Leaderboard: the leaderboard account is offline.'
+            : 'Leaderboard: no online bot to run the command.',
+        });
+      }
       return;
     }
 
@@ -289,7 +307,7 @@ export default class BotManager {
     const userIds = new Set([...this.sessions.keys()].map((k) => k.split(':')[0]));
     for (const userId of userIds) {
       const s = getSettings.get(userId);
-      if (s && s.leaderboard_enabled) this.refreshLeaderboard(userId).catch(() => {});
+      if (s && s.leaderboard_enabled) this.refreshLeaderboard(userId, { quiet: true }).catch(() => {});
     }
   }
 
@@ -317,15 +335,18 @@ export default class BotManager {
   wallBroadcast(userId) { this.wallBot.broadcast(userId); }
   wallReload(userId) { this.wallBot.reload(userId); }
 
-  // After a bot comes online, do one delayed refresh (debounced per user) so the board
-  // populates soon after connecting instead of waiting for the next hourly tick.
-  _maybeAutoRefreshLeaderboard(userId) {
+  // When the leaderboard bot itself comes online, do one delayed refresh (debounced per user) so
+  // the board populates soon after connecting instead of waiting for the next hourly tick. Any
+  // other account coming online is ignored — loading a new account must not trigger the command.
+  _maybeAutoRefreshLeaderboard(userId, accountId) {
     const s = getSettings.get(userId);
     if (!s || !s.leaderboard_enabled) return;
+    const runner = this._leaderboardSession(userId, s);
+    if (!runner || String(runner.account?.id) !== String(accountId)) return;
     if (this._lbAutoTimers.has(userId)) return;
     const t = setTimeout(() => {
       this._lbAutoTimers.delete(userId);
-      this.refreshLeaderboard(userId).catch(() => {});
+      this.refreshLeaderboard(userId, { quiet: true }).catch(() => {});
     }, LEADERBOARD_ONLINE_DELAY_MS);
     this._lbAutoTimers.set(userId, t);
   }
