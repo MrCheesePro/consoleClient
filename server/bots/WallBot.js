@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
-  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker,
+  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker, lastRaidChecker,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
+  RAID_OUTPOST_REMINDER_DEFAULT, RAID_OUTPOST_COMBINED_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
 
 // Discord embed accent colours, as the integers the webhook API expects.
@@ -30,6 +31,15 @@ const VERIFY_MAX_PER_HOUR = 5;         // wrong password/code guesses allowed pe
 const CODE_TTL_MS = 15 * 60 * 1000;    // how long an issued verification code stays usable
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
+
+const RAID_OUTPOST_CHECK_DEFAULT = 'Raid Outpost checked by {player} [{checks}]';
+
+// Raid Outpost server broadcasts, matched against color-stripped lines. Unanchored, so a server
+// prefix in front of the "(!)" doesn't break them.
+export const RAID_OUTPOST_CLAIMED_RE = /\(!\)\s+([A-Za-z0-9_]+)\s+have claimed the Raid Outpost!/i;
+export const RAID_OUTPOST_COOLDOWN_RE = /The raid outpost is now unavailable for 1 HOUR!/i;
+export const RAID_OUTPOST_STARTED_RE = /A RAID OUTPOST HAS STARTED!/i;
+export const RAID_OUTPOST_LOST_RE = /\(!\)\s+([A-Za-z0-9_]+)\s+have lost the Raid Outpost,\s+as they have held control for 12 hours!/i;
 
 // Two built-in chat parsers, selected by name from the wall_chat_pattern setting.
 //
@@ -226,12 +236,18 @@ export default class WallBot {
       raidActive: false,
       lastCheckAt: row?.last_check_at || 0,
       totalChecks: row?.total_checks || 0,
-      lastReminderAt: 0,         // when we last spoke, kept apart from lastCheckAt on purpose
-      wasQuiet: false,           // were we inside the quiet window on the previous tick?
-      quietEndedAt: 0,           // when quiet hours last lifted; restarts the unchecked count
+      lastReminderAt: 0,         // when we last reminded about walls, kept apart from lastCheckAt
+      lastRaidReminderAt: 0,     // same for the outpost — own clock, so neither holds the other back
+      wasQuiet: false,           // were walls paused (quiet hours or grace) on the previous tick?
+      quietEndedAt: 0,           // when the pause last lifted; restarts the unchecked count
+      // Raid Outpost: IDLE → CLAIMED_GRACE → COOLDOWN → ACTIVE_CHECKING → IDLE. Persisted.
+      raidOutpostState: row?.raid_outpost_state || 'IDLE',
+      raidOutpostHolder: row?.raid_outpost_holder || '', // last faction seen claiming it; '' = unknown
+      raidOutpostClaimedAt: row?.raid_outpost_claimed_at || 0,
+      lastRaidCheckAt: row?.last_raid_check_at || 0,
       raidStartedAt: 0,          // when the current raid alert began, for "time since alert"
       raidTimer: null,
-      cooldowns: new Map(),      // player -> ts of last counted check
+      cooldowns: new Map(),      // `${kind}:${player}` -> ts of last counted check
       notices: new Map(),        // player -> ts of last "please verify" reply
       verifyAttempts: new Map(), // player -> [ts, ...] of wrong password/code guesses this hour
       pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
@@ -290,7 +306,7 @@ export default class WallBot {
   manualCheck(userId, player) {
     const settings = getSettings.get(userId);
     const name = normalizePlayer(player) || 'panel';
-    this._countCheck(userId, settings, name, { announce: !!settings?.wall_enabled });
+    this._countCheck(userId, settings, name, { kind: 'wall', announce: !!settings?.wall_enabled });
   }
 
   // ---- chat intake ----
@@ -304,6 +320,9 @@ export default class WallBot {
     if (!settings?.wall_enabled) return;
     const wallSession = this.resolveSession(userId);
     if (!wallSession || wallSession !== session) return;
+
+    // Server broadcasts first — they aren't player chat, so parseChatLine would drop them.
+    if (this._handleRaidOutpost(userId, settings, stripFormatting(text))) return;
 
     const parsed = parseChatLine(text, settings.wall_chat_pattern);
     if (!parsed) return;
@@ -431,44 +450,142 @@ export default class WallBot {
     return false;
   }
 
-  _handleCheckTrigger(userId, settings, player, message) {
-    if (!compileTriggers(settings.wall_trigger)(message)) return;
+  /**
+   * Raid Outpost server broadcasts drive a small state machine. It only ever touches outpost
+   * fields — the wall loop, `lastCheckAt` and the wall counters carry on regardless.
+   * Returns true when the line was one of the broadcasts.
+   */
+  _handleRaidOutpost(userId, settings, line) {
+    const faction = normalizePlayer(settings.raid_outpost_faction);
+    const state = this._stateFor(userId);
+    const now = Date.now();
+    let m;
 
-    // Checks don't count during quiet hours — nobody is expected to be walking the walls then,
-    // and letting them bank checks would inflate the leaderboard for hours nobody was watching.
-    // Raid triggers are deliberately NOT gated this way: a raid is an emergency whenever it lands.
-    if (isQuietHours(Date.now(), settings.wall_quiet_start, settings.wall_quiet_end)) {
-      this._notifyOnce(userId, player, 'Wall checks are paused during quiet hours.');
-      return;
+    if ((m = RAID_OUTPOST_CLAIMED_RE.exec(line))) {
+      const by = normalizePlayer(m[1]);
+      const wasOurs = !!faction && (state.raidOutpostState !== 'IDLE' || state.raidOutpostHolder === faction);
+      state.raidOutpostHolder = by;
+      if (faction && by === faction) {
+        state.raidOutpostState = 'CLAIMED_GRACE';
+        state.raidOutpostClaimedAt = now;
+        this._raidOutpostNotice(userId, COLOR_OK, `We claimed the Raid Outpost (${m[1]}).`);
+      } else {
+        this._resetRaidOutpost(state);
+        if (wasOurs) this._raidOutpostNotice(userId, COLOR_ALERT, `${m[1]} took the Raid Outpost from us.`);
+        else this._console(userId, `Raid Outpost claimed by ${by}.`);
+      }
+    } else if (RAID_OUTPOST_COOLDOWN_RE.test(line)) {
+      if (state.raidOutpostState === 'CLAIMED_GRACE') {
+        state.raidOutpostState = 'COOLDOWN';
+      } else if (state.raidOutpostState === 'IDLE' && faction
+        && (!state.raidOutpostHolder || state.raidOutpostHolder === faction)) {
+        // The claim went by while we were offline. The cooldown line doesn't say whose it is, so
+        // assume ours unless we saw someone else take it. A missed hold of our own outpost costs
+        // 12 unchecked hours; a wrong guess costs some reminders the panel shows plainly.
+        state.raidOutpostState = 'COOLDOWN';
+        state.raidOutpostHolder = faction;
+        this._console(userId, `Raid Outpost cooldown started but the claim was missed — assuming ${faction} holds it.`);
+      } else {
+        return true;
+      }
+      if (state.raidOutpostState === 'COOLDOWN') this._console(userId, 'Raid Outpost on 1 hour cooldown.');
+    } else if (RAID_OUTPOST_STARTED_RE.test(line)) {
+      if (state.raidOutpostState !== 'CLAIMED_GRACE' && state.raidOutpostState !== 'COOLDOWN') return true;
+      state.raidOutpostState = 'ACTIVE_CHECKING';
+      state.lastRaidCheckAt = now;
+      state.lastRaidReminderAt = 0;
+      this._console(userId, 'Raid Outpost is live — raid checks are on.');
+    } else if ((m = RAID_OUTPOST_LOST_RE.exec(line))) {
+      const by = normalizePlayer(m[1]);
+      if (faction && by === faction) {
+        this._resetRaidOutpost(state);
+        state.raidOutpostHolder = '';
+        this._raidOutpostNotice(userId, COLOR_MUTED, 'We lost the Raid Outpost after holding it for 12 hours.');
+      } else if (state.raidOutpostHolder === by) {
+        state.raidOutpostHolder = '';
+      }
+    } else {
+      return false;
     }
+    this._persist(userId, state);
+    this.broadcast(userId);
+    return true;
+  }
+
+  // Ownership changes go to Discord only (raid channel, falling back to wall) — the server already
+  // announces them in game, so echoing them into chat would just be noise.
+  _raidOutpostNotice(userId, color, text) {
+    this._send(userId, text, { channel: 'raid', minecraft: false, embed: { color, description: `**${text}**` } });
+  }
+
+  _resetRaidOutpost(state) {
+    state.raidOutpostState = 'IDLE';
+    state.raidOutpostClaimedAt = 0;
+    state.lastRaidCheckAt = 0;
+    state.lastRaidReminderAt = 0;
+  }
+
+  /**
+   * `walls` and `raid` are separate checks that can share one message: "walls raid" logs both.
+   * Each kind is refused on its own terms — walls during quiet hours or grace period, the outpost
+   * whenever it isn't live. Outpost checks are deliberately allowed in quiet hours and grace.
+   */
+  _handleCheckTrigger(userId, settings, player, message) {
+    const wantWall = compileTriggers(settings.wall_trigger)(message);
+    const wantRaid = compileTriggers(settings.raid_outpost_trigger)(message);
+    if (!wantWall && !wantRaid) return;
+
+    const state = this._stateFor(userId);
+    const kinds = [];
+    if (wantWall) {
+      // Checks don't count during quiet hours — nobody is expected to be walking the walls then,
+      // and letting them bank checks would inflate the leaderboard for hours nobody was watching.
+      if (settings.grace_period) {
+        this._notifyOnce(userId, player, 'Grace period — wall checks are off.');
+      } else if (isQuietHours(Date.now(), settings.wall_quiet_start, settings.wall_quiet_end)) {
+        this._notifyOnce(userId, player, 'Wall checks are paused during quiet hours.');
+      } else {
+        kinds.push('wall');
+      }
+    }
+    if (wantRaid) {
+      if (state.raidOutpostState === 'ACTIVE_CHECKING') kinds.push('raid');
+      else this._notifyOnce(userId, player, 'No Raid Outpost check is running.');
+    }
+    if (!kinds.length) return;
 
     if (!this._requireAuthorized(userId, settings, player)) return;
 
-    const state = this._stateFor(userId);
     const now = Date.now();
-    const last = state.cooldowns.get(player) || 0;
-    if (now - last < CHECK_COOLDOWN_MS) {
-      const wait = Math.ceil((CHECK_COOLDOWN_MS - (now - last)) / 1000);
-      this._whisper(userId, player, `Already counted — wait ${wait}s before checking again.`);
-      return;
+    for (const kind of kinds) {
+      const last = state.cooldowns.get(`${kind}:${player}`) || 0;
+      if (now - last < CHECK_COOLDOWN_MS) {
+        const wait = Math.ceil((CHECK_COOLDOWN_MS - (now - last)) / 1000);
+        this._whisper(userId, player, `Already counted — wait ${wait}s before checking again.`);
+        continue;
+      }
+      this._countCheck(userId, settings, player, { kind, announce: true });
     }
-    this._countCheck(userId, settings, player, { announce: true });
   }
 
-  _countCheck(userId, settings, player, { announce }) {
+  // A wall check moves only the wall clock and counter; a raid check only the outpost's.
+  _countCheck(userId, settings, player, { kind = 'wall', announce }) {
     const state = this._stateFor(userId);
     const now = Date.now();
+    const raid = kind === 'raid';
 
-    // A check logged while a raid alert is running is counted as a raid check instead of a wall
-    // check, so the two stay separable in the log embed. They are mutually exclusive: one check
-    // increments one counter.
-    const duringRaid = !!state.raidActive;
-    (duringRaid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, last_check: now });
-    state.cooldowns.set(player, now);
+    (raid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, last_check: now });
+    state.cooldowns.set(`${kind}:${player}`, now);
     state.totalChecks += 1;
-    const sinceLast = state.lastCheckAt ? now - state.lastCheckAt : 0;
-    state.lastCheckAt = now;
-    state.lastReminderAt = 0; // a real check restarts the reminder cycle
+    const prev = raid ? state.lastRaidCheckAt : state.lastCheckAt;
+    const sinceLast = prev ? now - prev : 0;
+    if (raid) {
+      state.lastRaidCheckAt = now;
+      state.lastRaidReminderAt = 0;
+    } else {
+      state.lastCheckAt = now;
+      state.lastReminderAt = 0; // a real check restarts the reminder cycle
+    }
     this._persist(userId, state);
 
     if (announce) {
@@ -479,17 +596,17 @@ export default class WallBot {
       const raidChecks = mine.raid_checks || 0;
       const values = {
         player,
-        checks: duringRaid ? raidChecks : wallChecks,
+        checks: raid ? raidChecks : wallChecks,
         total: state.totalChecks,
         minutes: Math.round(sinceLast / 60000),
       };
-      const text = fillPlaceholders(settings.wall_check_message || CHECK_DEFAULT, values);
-      this._send(userId, text, {
+      const template = raid ? RAID_OUTPOST_CHECK_DEFAULT : (settings.wall_check_message || CHECK_DEFAULT);
+      this._send(userId, fillPlaceholders(template, values), {
         channel: 'check',
         embed: {
           color: COLOR_LOG,
           author: {
-            name: `${player} recorded a ${duringRaid ? 'RAID CHECK' : 'WALL CHECK'}.`,
+            name: `${player} recorded a ${raid ? 'RAID OUTPOST CHECK' : 'WALL CHECK'}.`,
             icon_url: HEAD_URL(player),
           },
           fields: [
@@ -581,48 +698,82 @@ export default class WallBot {
       if (!settings?.wall_enabled) continue;
 
       const now = Date.now();
-      if (isQuietHours(now, settings.wall_quiet_start, settings.wall_quiet_end)) {
+      const grace = !!settings.grace_period;
+      const quiet = isQuietHours(now, settings.wall_quiet_start, settings.wall_quiet_end);
+      // Grace period and quiet hours both pause walls. Coming out of either restarts the count —
+      // nobody was expected to check, so carrying that silence forward would open with an
+      // alarming number. `lastCheckAt` itself is left alone — it is the real record of when
+      // someone last checked, and the panel reports it as such.
+      const paused = grace || quiet;
+      if (paused) {
         state.wasQuiet = true;
-        continue;
-      }
-      // Coming out of quiet hours restarts the count. Nobody was expected to check overnight,
-      // so carrying that silence forward would open the day with an alarming number.
-      // `lastCheckAt` itself is left alone — it is the real record of when someone last checked,
-      // and the panel reports it as such.
-      if (state.wasQuiet) {
+      } else if (state.wasQuiet) {
         state.wasQuiet = false;
         state.quietEndedAt = now;
         state.lastReminderAt = 0;
       }
 
       const interval = Math.max(30000, Number(settings.wall_interval_ms) || 600000);
-      // Two separate clocks, deliberately. `countFrom` is what "minutes unchecked" measures —
-      // the last real check, or the end of quiet hours if that came later. `lastReminderAt`
-      // controls how often we repeat ourselves. Folding them together — as this used to — made
-      // every reminder report the interval instead of the real elapsed time.
+      // Two separate clocks per kind, deliberately. `countFrom` is what "minutes unchecked"
+      // measures — the last real check, or the end of the pause if that came later. The reminder
+      // clocks control how often we repeat ourselves. Folding them together — as this used to —
+      // made every reminder report the interval instead of the real elapsed time. Walls and the
+      // outpost pace separately, so a fresh wall check never holds back an overdue raid reminder.
       const countFrom = Math.max(state.lastCheckAt, state.quietEndedAt || 0);
-      if (now - countFrom < interval) continue;
-      if (state.lastReminderAt && now - state.lastReminderAt < interval) continue;
+      const wallDue = !paused && now - countFrom >= interval
+        && !(state.lastReminderAt && now - state.lastReminderAt < interval);
+      const live = state.raidOutpostState === 'ACTIVE_CHECKING';
+      const raidDue = live && now - state.lastRaidCheckAt >= interval
+        && !(state.lastRaidReminderAt && now - state.lastRaidReminderAt < interval);
+      if (!wallDue && !raidDue) continue;
 
       const last = lastWallChecker.get(userId);
+      const lastRaid = lastRaidChecker.get(userId);
       const values = {
         minutes: Math.round((now - countFrom) / 60000),
         total: state.totalChecks,
         player: last?.player || 'nobody',
         checks: last?.checks ?? 0,
+        raidMinutes: Math.floor((now - state.lastRaidCheckAt) / 60000),
+        raidPlayer: lastRaid?.player || 'nobody',
+        raidChecks: lastRaid?.raid_checks ?? 0,
+        bot: this._botName(userId),
       };
-      // The template owns the whole wording — nothing is appended behind the operator's back.
-      const template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';
+      const wallBody = fillPlaceholders(settings.wall_discord_message || DISCORD_REMINDER_DEFAULT, values);
+      const raidBody = fillPlaceholders(DISCORD_RAID_OUTPOST_DEFAULT, values);
+
+      // The templates own the whole wording — nothing is appended behind the operator's back.
+      let template;
+      let embed;
+      if (live && !paused) {
+        // Outpost live in normal hours: one combined line whenever either side is overdue.
+        template = settings.raid_outpost_combined_message || RAID_OUTPOST_COMBINED_DEFAULT;
+        embed = { title: 'Raid Outpost | Walls Alert!', description: `${raidBody}\n\n${wallBody}` };
+      } else if (wallDue) {
+        template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';
+        embed = { title: 'Wall Check Alert!', description: wallBody };
+      } else {
+        // Paused with the outpost live: grace period or quiet hours. Walls stay silent, but the
+        // raid prompt still goes to Minecraft and Discord.
+        template = settings.raid_outpost_reminder_message || RAID_OUTPOST_REMINDER_DEFAULT;
+        embed = {
+          title: grace ? 'Raid Outpost Alert (Grace Period)!' : 'Raid Outpost Alert!',
+          description: raidBody,
+        };
+      }
       this._send(userId, fillPlaceholders(template, values), {
-        embed: {
-          title: 'Wall Check Alert!',
-          color: COLOR_ALERT,
-          description: fillPlaceholders(settings.wall_discord_message || DISCORD_REMINDER_DEFAULT, values),
-        },
+        channel: live ? 'raid' : 'wall',
+        embed: { color: COLOR_ALERT, ...embed },
       });
-      state.lastReminderAt = now;
+      if (wallDue) state.lastReminderAt = now;
+      if (raidDue) state.lastRaidReminderAt = now;
       this.broadcast(userId);
     }
+  }
+
+  _botName(userId) {
+    const session = this.resolveSession(userId);
+    return session?.bot?.username || session?.account?.username || 'bot';
   }
 
   // ---- authorization ----
@@ -658,14 +809,14 @@ export default class WallBot {
    * (say) a public call-out with a private status whisper. The outbound queue still spaces them,
    * so a two-line reminder goes out 1.5s apart rather than as a burst.
    */
-  _send(userId, text, { channel = 'wall', embed = null } = {}) {
+  _send(userId, text, { channel = 'wall', embed = null, minecraft = true } = {}) {
     const settings = getSettings.get(userId);
     const lines = String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
 
     for (const line of lines) {
       this._console(userId, line);
-      if (settings?.wall_to_minecraft) this._enqueue(userId, line, line);
+      if (minecraft && settings?.wall_to_minecraft) this._enqueue(userId, line, line);
     }
 
     // Raid alerts and check logs can each go to their own channel. Without a webhook of their own
@@ -805,6 +956,10 @@ export default class WallBot {
       user_id: userId,
       total_checks: state.totalChecks,
       last_check_at: state.lastCheckAt,
+      raid_outpost_state: state.raidOutpostState,
+      raid_outpost_holder: state.raidOutpostHolder,
+      raid_outpost_claimed_at: state.raidOutpostClaimedAt,
+      last_raid_check_at: state.lastRaidCheckAt,
     });
   }
 
@@ -814,6 +969,7 @@ export default class WallBot {
     const row = getWallState.get(userId);
     state.totalChecks = row?.total_checks || 0;
     state.lastCheckAt = row?.last_check_at || 0;
+    state.lastRaidCheckAt = row?.last_raid_check_at || 0;
     state.cooldowns.clear();
     this.broadcast(userId);
   }
@@ -826,6 +982,8 @@ export default class WallBot {
       raidActive: state.raidActive,
       lastCheckAt: state.lastCheckAt,
       totalChecks: state.totalChecks,
+      raidOutpostState: state.raidOutpostState,
+      lastRaidCheckAt: state.lastRaidCheckAt,
       top: topWallCheckers.all(userId),
       roster: listWallPlayers.all(userId),
       accountOnline: !!this.resolveSession(userId),

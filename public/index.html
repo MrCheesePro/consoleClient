@@ -266,7 +266,7 @@
                     placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
 
                   <label class="settings-label">Check triggers</label>
-                  <input class="text-input" placeholder="check, checked, walls, wall" data-setting="wall_trigger" />
+                  <input class="text-input" placeholder="walls, check" data-setting="wall_trigger" />
 
                   <label class="settings-label">Require verification</label>
                   <button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button>
@@ -302,13 +302,39 @@
 
                   <label class="settings-label">Listen on</label>
                   <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
+
+                  <label class="settings-label">Grace period (Raid Outpost only)</label>
+                  <button class="toggle" data-setting="grace_period" aria-pressed="false"></button>
+
+                  <label class="settings-label">Our faction (Raid Outpost)</label>
+                  <input class="text-input" placeholder="TurtleGang" data-setting="raid_outpost_faction" />
+
+                  <label class="settings-label">Raid Outpost check triggers</label>
+                  <input class="text-input" placeholder="raid" data-setting="raid_outpost_trigger" />
+
+                  <label class="settings-label">Raid Outpost reminder</label>
+                  <input class="text-input" data-setting="raid_outpost_reminder_message"
+                    placeholder="Check Raid Outpost /msg {bot} raid : Minutes since last checked: {raidMinutes}m [{raidPlayer}]" />
+
+                  <label class="settings-label">Raid Outpost + walls reminder</label>
+                  <input class="text-input" data-setting="raid_outpost_combined_message"
+                    placeholder="Check Raid Outpost | Walls ... Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]" />
                 </div>
 
                 <p class="hint"><strong>Messages</strong> — each line of a message is sent as its
                   own chat message, 1.5s apart, so you can pair a public call-out with a private
                   status line. Placeholders: <code>{minutes}</code> unchecked, <code>{player}</code>
                   who checked last, <code>{checks}</code> that player's count,
-                  <code>{total}</code> checks all-time.</p>
+                  <code>{total}</code> checks all-time. Outpost messages add
+                  <code>{raidMinutes}</code>, <code>{raidPlayer}</code>, <code>{raidChecks}</code>
+                  and <code>{bot}</code> (the wall account&#39;s name).</p>
+
+                <p class="hint"><strong>Raid Outpost</strong> — set your faction and the bot follows
+                  the server&#39;s outpost broadcasts: claimed, 1-hour cooldown, then live. While it is
+                  live, players message the bot <code>raid</code> (or <code>walls raid</code>) and the
+                  reminder covers both. <strong>Grace period</strong> turns wall checks off entirely,
+                  so only the outpost is reminded; quiet hours mute walls but the outpost prompt
+                  still goes out.</p>
 
                 <p class="hint"><strong>Discord embed body</strong> — Discord posts arrive as an
                   embed with a coloured bar, a title and a timestamp. This field is the body of the
@@ -346,7 +372,7 @@
                   <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
 
                   <label class="settings-label">Raid on triggers</label>
-                  <input class="text-input" placeholder="weewoo, raid, raided" data-setting="raid_trigger" />
+                  <input class="text-input" placeholder="weewoo" data-setting="raid_trigger" />
 
                   <label class="settings-label">Raid off triggers</label>
                   <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />

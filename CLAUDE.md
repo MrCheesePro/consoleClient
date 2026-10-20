@@ -127,11 +127,28 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   regression cases in `test/wallbot.test.js` carry verbatim server output.
 - `WallBot#postLeaderboard` is **Discord-only** on purpose. Never route the board through `_send`;
   ten lines into Minecraft chat is a spam mute.
-- `wall_stats` splits `checks` (wall) from `raid_checks` (logged while a raid was running). They
-  are **mutually exclusive** — one check increments exactly one counter. The leaderboard and
-  `{checks}` rank on `checks`. Raid output prefers `raid_discord_webhook`
+- `wall_stats` splits `checks` (wall) from `raid_checks` (**Raid Outpost** checks). A wall check
+  moves only `checks`/`last_check`/`lastCheckAt`; a raid check moves only `raid_checks`/
+  `last_raid_check`/`lastRaidCheckAt`; `walls raid` in one message moves both. `last_raid_check` is
+  separate so `lastWallChecker` stays wall-only. The leaderboard and `{checks}` rank on `checks`.
+  Trigger words: walls = `wall_trigger` (`walls, check`), outpost = `raid_outpost_trigger` (`raid`), the
+  raid *alarm* = `raid_trigger` (`weewoo`) — keep "raid" out of the alarm or every outpost check
+  sounds it. Raid output prefers `raid_discord_webhook`
   when `raid_to_discord` is on **and** the URL is non-empty, otherwise it falls back to the wall
   webhook — an alert should never silently go nowhere because a field was left blank.
+- **Raid Outpost** state (`raidOutpostState`, persisted in `wall_state` so a 12h hold survives a
+  restart) is driven by server broadcasts, matched in `_handleRaidOutpost` *before* `parseChatLine`:
+  our faction's claim → `CLAIMED_GRACE`, "unavailable for 1 HOUR" → `COOLDOWN`, "A RAID OUTPOST HAS
+  STARTED" → `ACTIVE_CHECKING`, our 12h loss or anyone else's claim → `IDLE`. A cooldown heard while
+  `IDLE` with no known holder is assumed ours (the claim was missed while offline). Blank
+  `raid_outpost_faction` keeps it all inert. It never touches the wall loop or wall counters. Only
+  ownership changes (we claimed it, someone took it from us, our 12h hold ended) are announced, and
+  only to Discord (`_raidOutpostNotice`, raid channel → wall fallback) — the server already says them in game.
+- Reminder modes in `_tick`: `grace_period` and quiet hours both pause walls (leaving either
+  restarts the wall count via `quietEndedAt`). Outpost live + not paused → combined line whenever
+  either side is due; paused + outpost live → raid line only (still sent in-game and to Discord);
+  otherwise the plain wall reminder. Walls and outpost pace on separate clocks
+  (`lastReminderAt` / `lastRaidReminderAt`) so one never suppresses the other.
 - `WallBot#_send` splits its text on newlines and sends **one chat message per line** (spaced by
   the outbound queue). `wall_reminder_message` is a template run through `fillPlaceholders`
   (`{minutes}`, `{total}`, `{player}`); unknown placeholders are left as-is. Nothing is appended

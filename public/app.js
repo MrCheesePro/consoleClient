@@ -199,6 +199,8 @@ function handleWs(msg) {
         raidActive: !!msg.raidActive,
         lastCheckAt: msg.lastCheckAt || 0,
         totalChecks: msg.totalChecks || 0,
+        raidOutpostState: msg.raidOutpostState || 'IDLE',
+        lastRaidCheckAt: msg.lastRaidCheckAt || 0,
         top: msg.top || [],
         roster: msg.roster || [],
         accountOnline: !!msg.accountOnline,
@@ -643,9 +645,16 @@ function renderTiles(online) {
   $('wtile-roster').textContent = String(wall.roster.length);
 }
 
+const RAID_OUTPOST_LABELS = { CLAIMED_GRACE: 'claimed (grace)', COOLDOWN: 'on cooldown', ACTIVE_CHECKING: 'LIVE' };
+
 function renderWallSummary() {
   const parts = [`${wall.totalChecks} check${wall.totalChecks === 1 ? '' : 's'} total`];
   parts.push(wall.lastCheckAt ? `last ${formatAgo(wall.lastCheckAt)}` : 'no checks yet');
+  if (wall.raidOutpostState && wall.raidOutpostState !== 'IDLE') {
+    parts.push('Raid Outpost ' + (RAID_OUTPOST_LABELS[wall.raidOutpostState] || wall.raidOutpostState)
+      + (wall.raidOutpostState === 'ACTIVE_CHECKING' && wall.lastRaidCheckAt
+        ? ', checked ' + formatAgo(wall.lastRaidCheckAt) : ''));
+  }
   if (!wall.accountOnline) parts.push('no account online');
   $('wall-summary').textContent = parts.join(' · ');
 }

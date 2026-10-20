@@ -12,6 +12,7 @@ const db = await import('../server/db/db.js');
 const {
   default: WallBot, parseChatLine, compileTriggers, isQuietHours, normalizePlayer,
   fillPlaceholders, formatDuration, formatClock,
+  RAID_OUTPOST_CLAIMED_RE, RAID_OUTPOST_LOST_RE,
 } = await import('../server/bots/WallBot.js');
 
 const USER = 'local';
@@ -158,6 +159,9 @@ function harness(overrides = {}) {
     wall_to_minecraft: 0, // keep output on the console path so nothing is queued behind a timer
     wall_to_discord: 0,
     raid_enabled: 0,
+    grace_period: 0,
+    raid_outpost_faction: '',
+    raid_outpost_trigger: 'raid',
     ...overrides,
   });
   const session = {
@@ -172,6 +176,11 @@ function harness(overrides = {}) {
 
 function clearWallTables() {
   db.resetWallStats(USER);
+  // Outpost state is persisted too, and a live outpost would change every later reminder.
+  db.upsertWallState.run({
+    user_id: USER, total_checks: 0, last_check_at: 0,
+    raid_outpost_state: 'IDLE', raid_outpost_holder: '', raid_outpost_claimed_at: 0, last_raid_check_at: 0,
+  });
   for (const row of db.listWallPlayers.all(USER)) db.deleteWallPlayer.run(USER, row.player);
 }
 
@@ -442,7 +451,10 @@ test('resetWallStats zeroes the scoreboard but keeps the roster', () => {
   clearWallTables();
   db.upsertWallPlayer.run({ user_id: USER, player: 'notch', verified: 1, label: 'YK', added_at: Date.now() });
   db.incWallCheck.run({ user_id: USER, player: 'notch', last_check: Date.now() });
-  db.upsertWallState.run({ user_id: USER, total_checks: 1, last_check_at: Date.now() });
+  db.upsertWallState.run({
+    user_id: USER, total_checks: 1, last_check_at: Date.now(),
+    raid_outpost_state: 'IDLE', raid_outpost_holder: '', raid_outpost_claimed_at: 0, last_raid_check_at: 0,
+  });
 
   db.resetWallStats(USER);
 
@@ -848,35 +860,6 @@ test('a check posts a log embed to the logs channel', async () => {
   } finally { wb.stopAll(); }
 });
 
-test('a check during a raid is logged as a raid check', async () => {
-  clearWallTables();
-  db.updateSettings(USER, {
-    wall_enabled: 1, raid_enabled: 1, wall_to_minecraft: 0,
-    wall_require_verified: 0, wall_chat_pattern: 'chat',
-    check_to_discord: 1, check_discord_webhook: 'https://discord.test/logs',
-    wall_to_discord: 0,
-  });
-  const session = { account: { id: 'a', username: 'noobtech' }, bot: { username: 'noobtech' }, status: 'online', sendChat() {} };
-  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
-  try {
-    wb._stateFor(USER).raidActive = true;
-
-    const posts = await capturePost(async () => {
-      wb.handleChat(USER, session, 'zGhostx: check');
-    });
-
-    const embed = posts[0].body.embeds[0];
-    assert.equal(embed.author.name, 'zghostx recorded a RAID CHECK.');
-    const byName = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
-    assert.equal(byName['Raid Checks'], '`1`');
-    assert.equal(byName['Wall Checks'], '`0`', 'the two counters are mutually exclusive');
-
-    const row = db.allWallCheckers.all(USER).find((r) => r.player === 'zghostx');
-    assert.equal(row.raid_checks, 1);
-    assert.equal(row.checks, 0);
-  } finally { wb.stopAll(); }
-});
-
 test('checks fall back to the wall webhook when no logs channel is set', async () => {
   clearWallTables();
   db.updateSettings(USER, {
@@ -1247,4 +1230,254 @@ test('the verify password is redacted from console output', async () => {
 test('normalizePlayer folds casing so one player cannot occupy two rows', () => {
   assert.equal(normalizePlayer('  NoTcH '), 'notch');
   assert.equal(normalizePlayer(null), '');
+});
+
+// ---- Raid Outpost ----
+
+function raidOutpostHarness(overrides = {}) {
+  clearWallTables();
+  const out = harness({
+    wall_require_verified: 0, raid_outpost_faction: 'TurtleGang', wall_interval_ms: 60000,
+    wall_quiet_start: '', wall_quiet_end: '', ...overrides,
+  });
+  out.lines = () => {
+    // With wall_to_minecraft off every line lands on the console, prefixed `[wall] `.
+    return out.consoleLines.splice(0);
+  };
+  out.consoleLines = [];
+  out.wb.emitToUser = (_u, msg) => {
+    if (msg.type === 'consoleLine') out.consoleLines.push(msg.text.replace(/^\[wall\] /, ''));
+  };
+  return out;
+}
+
+// Drive the outpost to live the way the server announces it.
+function goLive(wb, session) {
+  wb.handleChat(USER, session, '§c§l(!) §fTurtleGang have claimed the Raid Outpost!');
+  wb.handleChat(USER, session, '§eThe raid outpost is now unavailable for 1 HOUR!');
+  wb.handleChat(USER, session, '§4§lA RAID OUTPOST HAS STARTED!');
+}
+
+test('outpost broadcasts parse through color codes', () => {
+  assert.equal(RAID_OUTPOST_CLAIMED_RE.exec('(!) TurtleGang have claimed the Raid Outpost!')[1], 'TurtleGang');
+  assert.equal(
+    RAID_OUTPOST_LOST_RE.exec('(!) TurtleGang have lost the Raid Outpost, as they have held control for 12 hours!')[1],
+    'TurtleGang',
+  );
+});
+
+test('our claim walks the outpost through grace, cooldown and live', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    wb.handleChat(USER, session, '(!) turtlegang have claimed the Raid Outpost!');
+    assert.equal(state.raidOutpostState, 'CLAIMED_GRACE');
+    wb.handleChat(USER, session, 'The raid outpost is now unavailable for 1 HOUR!');
+    assert.equal(state.raidOutpostState, 'COOLDOWN');
+    wb.handleChat(USER, session, 'A RAID OUTPOST HAS STARTED!');
+    assert.equal(state.raidOutpostState, 'ACTIVE_CHECKING');
+    assert.ok(Date.now() - state.lastRaidCheckAt < 1000);
+    assert.equal(db.getWallState.get(USER).raid_outpost_state, 'ACTIVE_CHECKING', 'persisted');
+  } finally { wb.stopAll(); }
+});
+
+test('another faction claiming resets the outpost and ignores their cooldown and start', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    goLive(wb, session);
+    wb.handleChat(USER, session, '(!) Enemies have claimed the Raid Outpost!');
+    assert.equal(state.raidOutpostState, 'IDLE');
+    assert.equal(state.lastRaidCheckAt, 0);
+    wb.handleChat(USER, session, 'The raid outpost is now unavailable for 1 HOUR!');
+    wb.handleChat(USER, session, 'A RAID OUTPOST HAS STARTED!');
+    assert.equal(state.raidOutpostState, 'IDLE');
+  } finally { wb.stopAll(); }
+});
+
+test('a cooldown heard after a restart mid-grace still reaches live', () => {
+  const first = raidOutpostHarness();
+  first.wb.handleChat(USER, first.session, '(!) TurtleGang have claimed the Raid Outpost!');
+  first.wb.stopAll();
+  // A fresh WallBot reads the persisted state, as after a crash or redeploy.
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => first.session });
+  try {
+    assert.equal(wb._stateFor(USER).raidOutpostState, 'CLAIMED_GRACE');
+    wb.handleChat(USER, first.session, 'The raid outpost is now unavailable for 1 HOUR!');
+    wb.handleChat(USER, first.session, 'A RAID OUTPOST HAS STARTED!');
+    assert.equal(wb._stateFor(USER).raidOutpostState, 'ACTIVE_CHECKING');
+  } finally { wb.stopAll(); }
+});
+
+test('a cooldown with the claim missed entirely is assumed ours', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    wb.handleChat(USER, session, 'The raid outpost is now unavailable for 1 HOUR!');
+    assert.equal(wb._stateFor(USER).raidOutpostState, 'COOLDOWN');
+  } finally { wb.stopAll(); }
+});
+
+test('no outpost faction set means the outpost is never tracked', () => {
+  const { wb, session } = raidOutpostHarness({ raid_outpost_faction: '' });
+  try {
+    goLive(wb, session);
+    assert.equal(wb._stateFor(USER).raidOutpostState, 'IDLE');
+  } finally { wb.stopAll(); }
+});
+
+test('the 12-hour loss clears the outpost but never the wall loop', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = 12345;
+    goLive(wb, session);
+    wb.handleChat(USER, session, '(!) TurtleGang have lost the Raid Outpost, as they have held control for 12 hours!');
+    assert.equal(state.raidOutpostState, 'IDLE');
+    assert.equal(state.wallActive, true);
+    assert.equal(state.lastCheckAt, 12345);
+  } finally { wb.stopAll(); }
+});
+
+test('"raid" is refused while the outpost is not live', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    wb.handleChat(USER, session, 'zghostx: raid');
+    assert.equal(db.allWallCheckers.all(USER).length, 0);
+  } finally { wb.stopAll(); }
+});
+
+test('"walls raid" counts both and moves both clocks; each kind moves only its own', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    goLive(wb, session);
+    state.lastCheckAt = 1;
+    state.lastRaidCheckAt = 1;
+
+    wb.handleChat(USER, session, 'zghostx: walls raid');
+    let row = db.allWallCheckers.all(USER).find((r) => r.player === 'zghostx');
+    assert.equal(row.checks, 1);
+    assert.equal(row.raid_checks, 1);
+    assert.ok(state.lastCheckAt > 1 && state.lastRaidCheckAt > 1);
+
+    state.lastCheckAt = 1;
+    wb.handleChat(USER, session, 'acesoft: raid');
+    assert.equal(state.lastCheckAt, 1, 'a raid check leaves the wall clock alone');
+    assert.equal(db.lastWallChecker.get(USER).player, 'zghostx', 'and the last wall checker');
+    assert.equal(db.lastRaidChecker.get(USER).player, 'acesoft');
+  } finally { wb.stopAll(); }
+});
+
+test('weewoo fires the raid alarm and raid does not', () => {
+  const { wb, session } = raidOutpostHarness({ raid_enabled: 1, raid_trigger: 'weewoo' });
+  try {
+    wb.handleChat(USER, session, 'zghostx: raid');
+    assert.equal(wb._stateFor(USER).raidActive, false);
+    wb.handleChat(USER, session, 'zghostx: WeeWoo');
+    assert.equal(wb._stateFor(USER).raidActive, true);
+  } finally { wb.stopAll(); }
+});
+
+test('grace period refuses wall checks and silences wall reminders', () => {
+  const { wb, session, lines } = raidOutpostHarness({ grace_period: 1 });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    state.lastCheckAt = Date.now() - 30 * 60000;
+    wb.handleChat(USER, session, 'zghostx: walls');
+    assert.equal(db.allWallCheckers.all(USER).length, 0);
+    lines();
+    wb._tick();
+    assert.deepEqual(lines(), []);
+  } finally { wb.stopAll(); db.updateSettings(USER, { grace_period: 0 }); }
+});
+
+test('grace period with the outpost live sends only the raid line', async () => {
+  const { wb, session, lines } = raidOutpostHarness({
+    grace_period: 1, wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+  });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    goLive(wb, session);
+    wb.handleChat(USER, session, 'acesoft: raid');
+    state.lastRaidCheckAt = Date.now() - 5 * 60000;
+    state.lastCheckAt = Date.now() - 30 * 60000;
+    lines();
+    const posts = await capturePost(async () => wb._tick());
+    assert.deepEqual(lines(), [
+      'Check Raid Outpost /msg wallbot raid : Minutes since last checked: 5m [acesoft]',
+    ]);
+    assert.equal(posts[0].body.embeds[0].title, 'Raid Outpost Alert (Grace Period)!');
+    assert.equal(posts[0].body.embeds[0].description,
+      'Raid Minutes Unchecked: **5**\nLast Checker: **acesoft** (Total Raid Checks: 1)');
+  } finally { wb.stopAll(); db.updateSettings(USER, { grace_period: 0, wall_to_discord: 0 }); }
+});
+
+test('quiet hours with the outpost live still send the raid line (Mode C)', () => {
+  const now = new Date();
+  const hh = (h) => `${String((h + 24) % 24).padStart(2, '0')}:00`;
+  const { wb, session, lines } = raidOutpostHarness({
+    wall_quiet_start: hh(now.getHours() - 1), wall_quiet_end: hh(now.getHours() + 1),
+  });
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    goLive(wb, session);
+    state.lastRaidCheckAt = Date.now() - 3 * 60000;
+    lines();
+    wb._tick();
+    assert.deepEqual(lines(), [
+      'Check Raid Outpost /msg wallbot raid : Minutes since last checked: 3m [nobody]',
+    ]);
+  } finally { wb.stopAll(); }
+});
+
+test('outpost live: either side overdue sends the combined line, paced per side (Mode B)', () => {
+  const { wb, session, lines } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    state.wallActive = true;
+    goLive(wb, session);
+    state.lastCheckAt = Date.now() - 30000;          // walls fresh
+    state.lastRaidCheckAt = Date.now() - 2 * 60000;  // raid overdue
+    lines();
+    wb._tick();
+    assert.deepEqual(lines(), [
+      'Check Raid Outpost | Walls /msg wallbot walls / raid : Minutes since last checked: '
+      + 'Raid: 2m [nobody] | Walls: 1m [nobody]',
+    ]);
+    // Walls fall due right after: the raid reminder just sent must not hold it back.
+    state.lastCheckAt = Date.now() - 2 * 60000;
+    wb._tick();
+    assert.equal(lines().length, 1);
+    // Both paced now — nothing more this tick.
+    wb._tick();
+    assert.deepEqual(lines(), []);
+  } finally { wb.stopAll(); }
+});
+
+test('outpost ownership changes post to Discord only; going live posts nothing', async () => {
+  const { wb, session } = raidOutpostHarness({
+    wall_to_minecraft: 1, wall_to_discord: 1, wall_discord_webhook: 'https://discord.test/wall',
+  });
+  const say = (line) => capturePost(async () => wb.handleChat(USER, session, line));
+  const body = (posts) => posts.map((p) => p.body.embeds[0].description);
+  try {
+    assert.deepEqual(body(await say('(!) TurtleGang have claimed the Raid Outpost!')),
+      ['**We claimed the Raid Outpost (TurtleGang).**']);
+    assert.deepEqual(await say('The raid outpost is now unavailable for 1 HOUR!'), []);
+    assert.deepEqual(await say('A RAID OUTPOST HAS STARTED!'), []);
+    assert.deepEqual(body(await say('(!) Enemies have claimed the Raid Outpost!')),
+      ['**Enemies took the Raid Outpost from us.**']);
+    // Changing hands between other factions is not our news.
+    assert.deepEqual(await say('(!) Others have claimed the Raid Outpost!'), []);
+
+    await say('(!) TurtleGang have claimed the Raid Outpost!');
+    assert.deepEqual(
+      body(await say('(!) TurtleGang have lost the Raid Outpost, as they have held control for 12 hours!')),
+      ['**We lost the Raid Outpost after holding it for 12 hours.**']);
+    assert.deepEqual(wb._stateFor(USER).queue, [], 'nothing goes to game chat');
+  } finally { wb.stopAll(); db.updateSettings(USER, { wall_to_minecraft: 0, wall_to_discord: 0 }); }
 });

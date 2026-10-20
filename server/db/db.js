@@ -31,6 +31,19 @@ export const DISCORD_REMINDER_DEFAULT =
 // Body of the Discord embed for a raid alert.
 export const DISCORD_RAID_DEFAULT = 'Check walls immediately and get online.';
 
+// Raid Outpost reminders. The single line covers grace period and quiet hours (raid only); the
+// combined one is sent when walls and the outpost are both overdue at once.
+export const RAID_OUTPOST_REMINDER_DEFAULT =
+  'Check Raid Outpost /msg {bot} raid : Minutes since last checked: {raidMinutes}m [{raidPlayer}]';
+export const RAID_OUTPOST_COMBINED_DEFAULT =
+  'Check Raid Outpost | Walls /msg {bot} walls / raid : Minutes since last checked: '
+  + 'Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]';
+export const DISCORD_RAID_OUTPOST_DEFAULT =
+  'Raid Minutes Unchecked: **{raidMinutes}**\nLast Checker: **{raidPlayer}** (Total Raid Checks: {raidChecks})';
+
+export const WALL_TRIGGER_DEFAULT = 'walls, check';
+export const RAID_TRIGGER_DEFAULT = 'weewoo';
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -74,7 +87,7 @@ db.exec(`
     wall_enabled          INTEGER NOT NULL DEFAULT 0,
     wall_account          TEXT    NOT NULL DEFAULT '',
     wall_interval_ms      INTEGER NOT NULL DEFAULT 600000,
-    wall_trigger          TEXT    NOT NULL DEFAULT 'check, checked, walls, wall',
+    wall_trigger          TEXT    NOT NULL DEFAULT '${WALL_TRIGGER_DEFAULT}',
     wall_require_verified INTEGER NOT NULL DEFAULT 1,
     wall_reminder_message TEXT    NOT NULL DEFAULT '${REMINDER_DEFAULT}',
     wall_check_message    TEXT    NOT NULL DEFAULT '${CHECK_DEFAULT}',
@@ -88,7 +101,7 @@ db.exec(`
     wall_quiet_start      TEXT    NOT NULL DEFAULT '',
     wall_quiet_end        TEXT    NOT NULL DEFAULT '',
     raid_enabled          INTEGER NOT NULL DEFAULT 0,
-    raid_trigger          TEXT    NOT NULL DEFAULT 'weewoo, raid, raided',
+    raid_trigger          TEXT    NOT NULL DEFAULT '${RAID_TRIGGER_DEFAULT}',
     raid_off_trigger      TEXT    NOT NULL DEFAULT 'weeoff, raidoff',
     raid_message          TEXT    NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE',
     raid_discord_message  TEXT    NOT NULL DEFAULT '${DISCORD_RAID_DEFAULT}',
@@ -96,7 +109,12 @@ db.exec(`
     raid_to_discord       INTEGER NOT NULL DEFAULT 0,
     raid_discord_webhook  TEXT    NOT NULL DEFAULT '',
     check_to_discord      INTEGER NOT NULL DEFAULT 0,
-    check_discord_webhook TEXT    NOT NULL DEFAULT ''
+    check_discord_webhook TEXT    NOT NULL DEFAULT '',
+    grace_period          INTEGER NOT NULL DEFAULT 0,
+    raid_outpost_faction       TEXT    NOT NULL DEFAULT '',
+    raid_outpost_trigger       TEXT    NOT NULL DEFAULT 'raid',
+    raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}',
+    raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -114,13 +132,18 @@ db.exec(`
     checks      INTEGER NOT NULL DEFAULT 0,
     raid_checks INTEGER NOT NULL DEFAULT 0,
     last_check  INTEGER NOT NULL DEFAULT 0,
+    last_raid_check INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, player)
   );
 
   CREATE TABLE IF NOT EXISTS wall_state (
     user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     total_checks  INTEGER NOT NULL DEFAULT 0,
-    last_check_at INTEGER NOT NULL DEFAULT 0
+    last_check_at INTEGER NOT NULL DEFAULT 0,
+    raid_outpost_state TEXT    NOT NULL DEFAULT 'IDLE',
+    raid_outpost_holder TEXT   NOT NULL DEFAULT '',
+    raid_outpost_claimed_at INTEGER NOT NULL DEFAULT 0,
+    last_raid_check_at INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS wall_players (
@@ -147,7 +170,7 @@ db.exec(`
   addColumn('wall_enabled', `wall_enabled INTEGER NOT NULL DEFAULT 0`);
   addColumn('wall_account', `wall_account TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_interval_ms', `wall_interval_ms INTEGER NOT NULL DEFAULT 600000`);
-  addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT 'check, checked, walls, wall'`);
+  addColumn('wall_trigger', `wall_trigger TEXT NOT NULL DEFAULT '${WALL_TRIGGER_DEFAULT}'`);
   addColumn('wall_require_verified', `wall_require_verified INTEGER NOT NULL DEFAULT 1`);
   addColumn('wall_reminder_message', `wall_reminder_message TEXT NOT NULL DEFAULT '${REMINDER_DEFAULT}'`);
   addColumn('wall_check_message', `wall_check_message TEXT NOT NULL DEFAULT '${CHECK_DEFAULT}'`);
@@ -161,7 +184,7 @@ db.exec(`
   addColumn('wall_quiet_start', `wall_quiet_start TEXT NOT NULL DEFAULT ''`);
   addColumn('wall_quiet_end', `wall_quiet_end TEXT NOT NULL DEFAULT ''`);
   addColumn('raid_enabled', `raid_enabled INTEGER NOT NULL DEFAULT 0`);
-  addColumn('raid_trigger', `raid_trigger TEXT NOT NULL DEFAULT 'weewoo, raid, raided'`);
+  addColumn('raid_trigger', `raid_trigger TEXT NOT NULL DEFAULT '${RAID_TRIGGER_DEFAULT}'`);
   addColumn('raid_off_trigger', `raid_off_trigger TEXT NOT NULL DEFAULT 'weeoff, raidoff'`);
   addColumn('raid_message', `raid_message TEXT NOT NULL DEFAULT 'RAID ALERT - DEFEND THE BASE'`);
   addColumn('raid_discord_message', `raid_discord_message TEXT NOT NULL DEFAULT '${DISCORD_RAID_DEFAULT}'`);
@@ -170,6 +193,21 @@ db.exec(`
   addColumn('raid_discord_webhook', `raid_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('check_to_discord', `check_to_discord INTEGER NOT NULL DEFAULT 0`);
   addColumn('check_discord_webhook', `check_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('grace_period', `grace_period INTEGER NOT NULL DEFAULT 0`);
+  addColumn('raid_outpost_faction', `raid_outpost_faction TEXT NOT NULL DEFAULT ''`);
+  addColumn('raid_outpost_trigger', `raid_outpost_trigger TEXT NOT NULL DEFAULT 'raid'`);
+  addColumn('raid_outpost_reminder_message', `raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}'`);
+  addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
+}
+
+// Raid Outpost state lives in wall_state so a restart mid-hold (the hold lasts 12h) remembers it.
+{
+  const cols = new Set(db.prepare(`PRAGMA table_info(wall_state)`).all().map((c) => c.name));
+  const addColumn = (name, ddl) => { if (!cols.has(name)) db.exec(`ALTER TABLE wall_state ADD COLUMN ${ddl}`); };
+  addColumn('raid_outpost_state', `raid_outpost_state TEXT NOT NULL DEFAULT 'IDLE'`);
+  addColumn('raid_outpost_holder', `raid_outpost_holder TEXT NOT NULL DEFAULT ''`);
+  addColumn('raid_outpost_claimed_at', `raid_outpost_claimed_at INTEGER NOT NULL DEFAULT 0`);
+  addColumn('last_raid_check_at', `last_raid_check_at INTEGER NOT NULL DEFAULT 0`);
 }
 
 // Same problem one table over: CREATE TABLE IF NOT EXISTS won't add raid_checks to a wall_stats
@@ -178,6 +216,9 @@ db.exec(`
   const cols = new Set(db.prepare(`PRAGMA table_info(wall_stats)`).all().map((c) => c.name));
   if (!cols.has('raid_checks')) {
     db.exec(`ALTER TABLE wall_stats ADD COLUMN raid_checks INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!cols.has('last_raid_check')) {
+    db.exec(`ALTER TABLE wall_stats ADD COLUMN last_raid_check INTEGER NOT NULL DEFAULT 0`);
   }
 }
 
@@ -194,6 +235,14 @@ db.exec(`
     `UPDATE settings SET wall_reminder_message = ? WHERE wall_reminder_message = ?`
   );
   for (const old of SUPERSEDED_DEFAULTS) refresh.run(REMINDER_DEFAULT, old);
+
+
+  // "raid" now means a Raid Outpost check, so the raid alarm can no longer listen for it, and the
+  // wall trigger was trimmed to the two words players actually use.
+  db.prepare(`UPDATE settings SET wall_trigger = ? WHERE wall_trigger = ?`)
+    .run(WALL_TRIGGER_DEFAULT, 'check, checked, walls, wall');
+  db.prepare(`UPDATE settings SET raid_trigger = ? WHERE raid_trigger = ?`)
+    .run(RAID_TRIGGER_DEFAULT, 'weewoo, raid, raided');
 }
 
 const now = () => Date.now();
@@ -265,6 +314,8 @@ const SETTINGS_FIELDS = [
   'raid_delay_ms',
   'raid_to_discord', 'raid_discord_webhook',
   'check_to_discord', 'check_discord_webhook',
+  'grace_period', 'raid_outpost_faction', 'raid_outpost_trigger',
+  'raid_outpost_reminder_message', 'raid_outpost_combined_message',
 ];
 
 export function updateSettings(userId, patch) {
@@ -290,9 +341,13 @@ export const upsertLeaderboard = db.prepare(`
 
 export const getWallState = db.prepare(`SELECT * FROM wall_state WHERE user_id = ?`);
 export const upsertWallState = db.prepare(`
-  INSERT INTO wall_state (user_id, total_checks, last_check_at)
-  VALUES (@user_id, @total_checks, @last_check_at)
-  ON CONFLICT(user_id) DO UPDATE SET total_checks = @total_checks, last_check_at = @last_check_at
+  INSERT INTO wall_state (user_id, total_checks, last_check_at,
+    raid_outpost_state, raid_outpost_holder, raid_outpost_claimed_at, last_raid_check_at)
+  VALUES (@user_id, @total_checks, @last_check_at,
+    @raid_outpost_state, @raid_outpost_holder, @raid_outpost_claimed_at, @last_raid_check_at)
+  ON CONFLICT(user_id) DO UPDATE SET total_checks = @total_checks, last_check_at = @last_check_at,
+    raid_outpost_state = @raid_outpost_state, raid_outpost_holder = @raid_outpost_holder,
+    raid_outpost_claimed_at = @raid_outpost_claimed_at, last_raid_check_at = @last_raid_check_at
 `);
 
 export const incWallCheck = db.prepare(`
@@ -301,12 +356,12 @@ export const incWallCheck = db.prepare(`
   ON CONFLICT(user_id, player) DO UPDATE SET checks = checks + 1, last_check = @last_check
 `);
 
-// A check logged while a raid alert is running counts separately, so the two can be reported
-// apart the way the Discord log embed shows them.
+// A Raid Outpost check. It stamps its own column and leaves last_check alone, so lastWallChecker
+// keeps meaning "who last checked walls".
 export const incRaidCheck = db.prepare(`
-  INSERT INTO wall_stats (user_id, player, raid_checks, last_check)
+  INSERT INTO wall_stats (user_id, player, raid_checks, last_raid_check)
   VALUES (@user_id, @player, 1, @last_check)
-  ON CONFLICT(user_id, player) DO UPDATE SET raid_checks = raid_checks + 1, last_check = @last_check
+  ON CONFLICT(user_id, player) DO UPDATE SET raid_checks = raid_checks + 1, last_raid_check = @last_check
 `);
 
 export const topWallCheckers = db.prepare(
@@ -318,6 +373,10 @@ export const topWallCheckers = db.prepare(
 export const lastWallChecker = db.prepare(
   `SELECT player, checks, raid_checks FROM wall_stats WHERE user_id = ?
    ORDER BY last_check DESC LIMIT 1`
+);
+export const lastRaidChecker = db.prepare(
+  `SELECT player, checks, raid_checks FROM wall_stats WHERE user_id = ? AND last_raid_check > 0
+   ORDER BY last_raid_check DESC LIMIT 1`
 );
 export const allWallCheckers = db.prepare(
   `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
@@ -344,7 +403,7 @@ export const deleteWallPlayer = db.prepare(
 // alone: a map reset wipes scores, not who is authorized to log a check.
 const _clearWallStats = db.prepare(`DELETE FROM wall_stats WHERE user_id = ?`);
 const _zeroWallState = db.prepare(
-  `UPDATE wall_state SET total_checks = 0, last_check_at = 0 WHERE user_id = ?`
+  `UPDATE wall_state SET total_checks = 0, last_check_at = 0, last_raid_check_at = 0 WHERE user_id = ?`
 );
 export const resetWallStats = db.transaction((userId) => {
   _clearWallStats.run(userId);
