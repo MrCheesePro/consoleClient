@@ -38,6 +38,8 @@ server/
 public/
   index.html        Static markup for all three panels + MSA modal
   app.js            SPA logic: fetch REST, drive WS, render accounts/console/settings
+  ui.js             Layout only: section index switching, and the view-header sentences and
+                    engine lantern, built by mirroring the hidden tile/rail elements app.js writes
   styles.css
 data/                SQLite db + per-user MS token caches (gitignored)
 ```
@@ -121,6 +123,10 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `{embeds:[…]}`; the caller's object *is* the embed, so `author`/`fields`/`footer` pass straight
   through and only `timestamp` is forced. No `embed` means a plain `{content}` post, so the embed
   is never load-bearing.
+- **Role pings** (`discord_ping_role`, `ping_weewoo`, `ping_raid_outpost`): embeds can't ping, so
+  `_postDiscord` puts `<@&id>` in `content` with `allowed_mentions: { roles: [id] }` — that post can
+  ping that role and nothing else. Only the *first* weewoo post pings, never the repeats.
+  `parseRoleId` accepts a bare ID or a copied `<@&id>`; anything else means no ping.
 - `parseLeaderboard` (`BotManager.js`) must stay tolerant: leading `[server]` tags are skipped and
   the score label is any word before `Points`, so `/f top` ("Faction Points") and `/f base`
   ("Base Points") both parse. Pinning it to one wording is what silently broke it before — the

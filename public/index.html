@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AFK Console Client</title>
+  <title>Console Client</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <!-- ===== Auth gate ===== -->
   <div id="auth-screen" class="auth-screen hidden">
     <div class="auth-card">
-      <div class="auth-mark">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
-      </div>
-      <h1 class="auth-title">AFK Console</h1>
+      <span class="brand-dot" aria-hidden="true"></span>
+      <h1 class="auth-title">Console Client</h1>
       <p class="auth-sub">Enter the password to unlock the panel.</p>
       <p id="auth-error" class="auth-error"></p>
-      <label class="field-label">Password</label>
+      <label class="field-label" for="auth-password">Password</label>
       <input id="auth-password" type="password" class="text-input" autocomplete="current-password" />
       <div class="auth-actions">
         <button id="auth-submit" class="btn btn-green">Unlock</button>
@@ -25,547 +26,751 @@
   </div>
 
   <!-- ===== Main app =====
-       Sidebar + main region. All four views live in this one document and are swapped by the
-       hash router in app.js, so a single WebSocket serves the whole panel. -->
+       Top bar, a header per view, then the body. All four views live in this one document and
+       are swapped by the hash router in app.js, so a single WebSocket serves the whole panel.
+       Elements app.js writes to but this layout doesn't show are kept as .sr-only. -->
   <div id="app" class="shell hidden">
-
-    <aside class="sidebar">
+    <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">AFK CONSOLE</span>
-          <span class="brand-kicker">CLIENT</span>
-        </div>
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span class="brand-name">Console Client</span>
       </div>
-
-      <nav class="nav">
-        <button class="tab" data-view="bots" aria-selected="true">
-          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span>Accounts</span>
-        </button>
-        <button class="tab" data-view="wall" aria-selected="false">
-          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
-          <span>Wall Bot</span>
-        </button>
-        <button class="tab" data-view="console" aria-selected="false">
-          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
-          <span>Console</span>
-        </button>
-        <button class="tab" data-view="settings" aria-selected="false">
-          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 2.6a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
-          <span>Settings</span>
-        </button>
+      <nav class="nav" aria-label="Views">
+        <button class="tab" data-view="bots" aria-selected="true"><span class="num" aria-hidden="true">一</span><span>Accounts</span></button>
+        <button class="tab" data-view="wall" aria-selected="false"><span class="num" aria-hidden="true">二</span><span>Wall Bot</span></button>
+        <button class="tab" data-view="console" aria-selected="false"><span class="num" aria-hidden="true">三</span><span>Console</span></button>
+        <button class="tab" data-view="settings" aria-selected="false"><span class="num" aria-hidden="true">四</span><span>Settings</span></button>
       </nav>
-
-      <div class="sidebar-foot">
+      <div class="topbar-end">
         <div class="conn">
           <span id="conn-dot" class="dot"></span>
           <span id="conn-text" class="conn-text">connecting</span>
         </div>
-        <div class="sidebar-user">
-          <span id="user-email"></span>
-          <button id="logout-btn" class="link-btn">Log out</button>
-        </div>
+        <span id="user-email" class="sr-only"></span>
+        <button id="logout-btn" class="link-btn">Log out</button>
       </div>
-    </aside>
+      <!-- Written by app.js on every view change; the view headers below say it in their own words. -->
+      <div class="sr-only">
+        <h1 id="page-title">Accounts</h1>
+        <p id="page-sub"></p>
+        <span id="online-count">Online: 0/0</span>
+      </div>
+    </header>
 
-    <main class="main">
-      <header class="topbar">
-        <div class="topbar-text">
-          <h1 id="page-title" class="page-title">Accounts</h1>
-          <p id="page-sub" class="page-sub">Bot identities, load state, and connection control.</p>
+    <!-- One header per view. CSS shows the one whose view is visible, so no JS is needed. -->
+    <div class="view-headers">
+      <section class="vh" data-for="bots">
+        <div class="vh-text">
+          <p class="kicker">一 · Accounts</p>
+          <h2 class="vh-title">Your accounts</h2>
+          <p class="vh-sentence" data-sentence="bots">Loading…</p>
         </div>
-        <div class="topbar-meta">
-          <span id="online-count" class="pill">Online: 0/0</span>
+      </section>
+
+      <section class="vh" data-for="wall">
+        <div class="vh-text">
+          <p class="kicker">二 · Wall Bot</p>
+          <h2 class="vh-title">Keeping watch</h2>
+          <p class="vh-sentence" data-sentence="wall">Loading…</p>
         </div>
-      </header>
-
-      <div id="main-body" class="main-body">
-        <div class="views">
-
-          <!-- ============ Accounts ============ -->
-          <div id="view-bots" class="view">
-            <!-- Summary tiles. Every value is derived from data the panel already has:
-                 the accounts list, live statuses, and the parsed leaderboard. -->
-            <div class="tiles">
-              <div class="tile">
-                <span class="tile-k">Total fleet</span>
-                <span class="tile-v" id="tile-total">0</span>
-                <span class="tile-f" id="tile-total-f">no accounts configured</span>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Online</span>
-                <span class="tile-v accent" id="tile-online">0</span>
-                <div class="tile-bar"><span id="tile-online-bar"></span></div>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Standby</span>
-                <span class="tile-v" id="tile-standby">0</span>
-                <span class="tile-f" id="tile-standby-f">nothing loaded</span>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Top faction</span>
-                <span class="tile-v sm accent" id="tile-faction">—</span>
-                <span class="tile-f" id="tile-faction-f">run the leaderboard</span>
-              </div>
+        <div class="lantern" data-state="off">
+          <div class="lantern-top">
+            <span class="orb" aria-hidden="true"></span>
+            <div>
+              <p class="lantern-k">Engine</p>
+              <p class="lantern-state" data-lantern="state">Resting</p>
+              <p class="lantern-line" data-lantern="line">0 of 0 bots online</p>
             </div>
+            <span id="wall-state" class="wall-state">off</span>
+          </div>
+          <div class="lantern-actions">
+            <button id="wall-start" class="btn btn-green">Start</button>
+            <button id="wall-end" class="btn btn-green">Stop</button>
+            <button id="wall-check" class="btn btn-night">Mark checked</button>
+            <button id="raid-start" class="btn btn-alarm">Weewoo</button>
+            <button id="raid-stop" class="btn btn-night">Weewoo off</button>
+          </div>
+        </div>
+      </section>
 
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>
-                <h3>Accounts</h3>
-                <span id="account-count" class="card-meta">0 accounts</span>
+      <section class="vh" data-for="console">
+        <div class="vh-text">
+          <p class="kicker">三 · Console</p>
+          <h2 class="vh-title">The console</h2>
+          <p class="vh-sentence" data-sentence="console">Loading…</p>
+        </div>
+      </section>
+
+      <section class="vh" data-for="settings">
+        <div class="vh-text">
+          <p class="kicker">四 · Settings</p>
+          <h2 class="vh-title">Settings</h2>
+          <p class="vh-sentence">How the bots connect, what they do while you're away, and where they report.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="horizon" aria-hidden="true"></div>
+
+    <div id="main-body" class="main-body">
+      <div class="views">
+        <!-- ============ Accounts ============ -->
+        <div id="view-bots" class="view">
+          <!-- Written by app.js; read by ui.js for the header sentence. -->
+          <div class="sr-only">
+            <span id="tile-total">0</span><span id="tile-total-f"></span>
+            <span id="tile-online">0</span><span id="tile-online-bar"></span>
+            <span id="tile-standby">0</span><span id="tile-standby-f"></span>
+            <span id="tile-faction">—</span><span id="tile-faction-f"></span>
+          </div>
+
+          <div class="ledger">
+            <div class="ledger-row">
+              <div class="ledger-meta">
+                <h4>Accounts <span id="account-count" class="card-meta">0 accounts</span></h4>
+                <p>Add an account, choose which to load, then connect.</p>
               </div>
-              <div class="card-body">
+              <div class="ledger-fields">
                 <div class="account-form">
                   <div class="account-inputs">
                     <div class="input-group">
-                      <label id="acc-label1" class="field-label">Username</label>
+                      <label id="acc-label1" class="field-label" for="acc-input1">Username</label>
                       <input id="acc-input1" class="text-input" placeholder="" />
                     </div>
-                    <button id="add-account" class="icon-btn" title="Add account">＋</button>
+                    <button id="add-account" class="icon-btn" title="Add account" aria-label="Add account">＋</button>
                   </div>
                   <p id="acc-hint" class="acc-hint"></p>
                 </div>
-
                 <div class="account-list-head">
                   <label class="select-all"><input type="checkbox" id="select-all" /> Select all</label>
                 </div>
                 <div id="account-list" class="account-list"></div>
-
                 <div class="account-footer">
                   <button id="connect-btn" class="btn btn-green">Connect</button>
                   <button id="disconnect-btn" class="btn btn-red">Disconnect</button>
                 </div>
               </div>
-            </section>
+            </div>
 
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M6 20V10"/><path d="M12 20V4"/><path d="M18 20v-6"/></svg>
-                <h3>Top Factions</h3>
+            <div class="ledger-row">
+              <div class="ledger-meta">
+                <h4>Top factions</h4>
+                <p>The server's leaderboard, refreshed hourly when it's on.</p>
                 <button id="lb-refresh" class="link-btn">Refresh now</button>
               </div>
-              <div class="card-body">
+              <div class="ledger-fields">
                 <div id="leaderboard-list" class="data-list"></div>
                 <div id="leaderboard-updated" class="muted-note"></div>
               </div>
-            </section>
-          </div>
-
-          <!-- ============ Wall Bot ============ -->
-          <div id="view-wall" class="view hidden">
-            <div class="tiles">
-              <div class="tile">
-                <span class="tile-k">Engine</span>
-                <span class="tile-v sm" id="wtile-state">off</span>
-                <span class="tile-f" id="wtile-state-f">not running</span>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Total checks</span>
-                <span class="tile-v" id="wtile-total">0</span>
-                <span class="tile-f">all time</span>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Last check</span>
-                <span class="tile-v sm" id="wtile-last">—</span>
-                <span class="tile-f" id="wtile-last-f">no checks yet</span>
-              </div>
-              <div class="tile">
-                <span class="tile-k">Authorized</span>
-                <span class="tile-v" id="wtile-roster">0</span>
-                <span class="tile-f">verified players</span>
-              </div>
             </div>
-
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
-                <h3>Status</h3>
-                <span id="wall-state" class="wall-state">off</span>
-              </div>
-              <div class="card-body">
-                <div class="wall-actions">
-                  <button id="wall-start" class="btn btn-pill">Start</button>
-                  <button id="wall-end" class="btn btn-pill">Stop</button>
-                  <button id="wall-check" class="btn btn-pill">Mark checked</button>
-                  <button id="raid-start" class="btn btn-pill btn-warn">Weewoo</button>
-                  <button id="raid-stop" class="btn btn-pill">Weewoo off</button>
-                </div>
-
-                <div id="wall-summary" class="muted-note"></div>
-                <div id="wall-list" class="data-list"></div>
-
-                <div class="wall-actions wall-actions-end">
-                  <button id="wall-export" class="link-btn">Export JSON</button>
-                  <button id="wall-reset" class="link-btn danger">Reset stats</button>
-                </div>
-                <!-- Two-step confirm rather than window.confirm: a native modal blocks the page,
-                     which is exactly the wrong behavior when the panel is driven remotely. -->
-                <div id="wall-reset-confirm" class="wall-confirm hidden">
-                  <span>Wipe all check counts? A JSON backup is saved first.</span>
-                  <button id="wall-reset-yes" class="btn btn-pill btn-red">Yes, reset</button>
-                  <button id="wall-reset-no" class="link-btn">Cancel</button>
-                </div>
-                <div id="wall-reset-result" class="wall-note"></div>
-              </div>
-            </section>
-
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                <h3>Authorized Players</h3>
-                <span id="roster-count" class="card-meta">0</span>
-              </div>
-              <div class="card-body">
-                <div class="account-inputs">
-                  <div class="input-group">
-                    <input id="roster-input" class="text-input" placeholder="Minecraft username" />
-                  </div>
-                  <button id="roster-add" class="icon-btn" title="Add authorized player">＋</button>
-                </div>
-                <div id="roster-list" class="data-list"></div>
-                <p class="hint">Added here = pre-verified. Players can also self-verify in game:
-                  they message the bot <code>verify &lt;password&gt;</code>, it whispers back a
-                  6-digit code, they reply <code>verify &lt;code&gt;</code> within 15 minutes.</p>
-              </div>
-            </section>
-
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
-                <h3>Wall Settings</h3>
-              </div>
-              <div class="card-body">
-                <div class="settings-grid">
-                  <label class="settings-label">Enable wall bot</label>
-                  <button class="toggle" data-setting="wall_enabled" aria-pressed="false"></button>
-
-                  <label class="settings-label">Wall bot account</label>
-                  <select id="set-wall_account" class="select-input" data-setting="wall_account"></select>
-
-                  <label class="settings-label">Reminder interval (ms)</label>
-                  <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
-
-                  <label class="settings-label">Reminder message<br>
-                    <span class="label-sub">one message per line</span></label>
-                  <textarea class="text-input reminder-box" rows="3" spellcheck="false"
-                    data-setting="wall_reminder_message"
-                    placeholder="Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}"></textarea>
-
-                  <label class="settings-label">Check confirmation</label>
-                  <input class="text-input" placeholder="Walls checked by {player} [{checks}]"
-                    data-setting="wall_check_message" />
-
-                  <label class="settings-label">Discord embed body<br>
-                    <span class="label-sub">markdown, reminders only</span></label>
-                  <textarea class="text-input reminder-box" rows="2" spellcheck="false"
-                    data-setting="wall_discord_message"
-                    placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
-
-                  <label class="settings-label">Check triggers</label>
-                  <input class="text-input" placeholder="walls, check" data-setting="wall_trigger" />
-
-                  <label class="settings-label">Require verification</label>
-                  <button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button>
-
-                  <label class="settings-label">Faction password</label>
-                  <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
-                    autocomplete="off" data-setting="wall_verify_password" />
-
-                  <label class="settings-label">Send to Minecraft</label>
-                  <button class="toggle" data-setting="wall_to_minecraft" aria-pressed="false"></button>
-
-                  <label class="settings-label">Send to Discord</label>
-                  <button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button>
-
-                  <label class="settings-label">Discord webhook URL</label>
-                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
-
-                  <label class="settings-label">Checks to a logs channel</label>
-                  <button class="toggle" data-setting="check_to_discord" aria-pressed="false"></button>
-
-                  <label class="settings-label">Logs webhook URL</label>
-                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
-                    data-setting="check_discord_webhook" />
-
-                  <label class="settings-label">Quiet hours start</label>
-                  <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
-
-                  <label class="settings-label">Quiet hours end</label>
-                  <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
-
-                  <label class="settings-label">Whisper command</label>
-                  <input class="text-input" placeholder="/msg" data-setting="wall_msg_command" />
-
-                  <label class="settings-label">Listen on</label>
-                  <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
-
-                  <label class="settings-label">Grace period (Raid Outpost only)</label>
-                  <button class="toggle" data-setting="grace_period" aria-pressed="false"></button>
-
-                  <label class="settings-label">Our faction (Raid Outpost)</label>
-                  <input class="text-input" placeholder="TurtleGang" data-setting="raid_outpost_faction" />
-
-                  <label class="settings-label">Raid Outpost check triggers</label>
-                  <input class="text-input" placeholder="raid" data-setting="raid_outpost_trigger" />
-
-                  <label class="settings-label">Raid Outpost reminder</label>
-                  <input class="text-input" data-setting="raid_outpost_reminder_message"
-                    placeholder="Check Raid Outpost /msg {bot} raid : Minutes since last checked: {raidMinutes}m [{raidPlayer}]" />
-
-                  <label class="settings-label">Raid Outpost + walls reminder</label>
-                  <input class="text-input" data-setting="raid_outpost_combined_message"
-                    placeholder="Check Raid Outpost | Walls ... Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]" />
-
-                  <label class="settings-label">Raid Outpost claimed/lost webhook</label>
-                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
-                    data-setting="raid_outpost_discord_webhook" />
-                </div>
-
-                <p class="hint"><strong>Messages</strong> — each line of a message is sent as its
-                  own chat message, 1.5s apart, so you can pair a public call-out with a private
-                  status line. Placeholders: <code>{minutes}</code> unchecked, <code>{player}</code>
-                  who checked last, <code>{checks}</code> that player's count,
-                  <code>{total}</code> checks all-time. Outpost messages add
-                  <code>{raidMinutes}</code>, <code>{raidPlayer}</code>, <code>{raidChecks}</code>
-                  and <code>{bot}</code> (the wall account&#39;s name).</p>
-
-                <p class="hint"><strong>Raid Outpost</strong> — set your faction and the bot follows
-                  the server&#39;s outpost broadcasts: claimed, 1-hour cooldown, then live. While it is
-                  live, players message the bot <code>raid</code> (or <code>walls raid</code>) and the
-                  reminder covers both. <strong>Grace period</strong> turns wall checks off entirely,
-                  so only the outpost is reminded; quiet hours mute walls but the outpost prompt
-                  still goes out.</p>
-
-                <p class="hint"><strong>Raid Outpost claimed/lost webhook</strong> — only the
-                  ownership news goes here: we claimed it, someone took it from us, our 12-hour hold
-                  ended. Leave it blank and that news falls back to the wall webhook. Raid Outpost
-                  reminders always go with the wall reminders.</p>
-
-                <p class="hint"><strong>Discord embed body</strong> — Discord posts arrive as an
-                  embed with a coloured bar, a title and a timestamp. This field is the body of the
-                  reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
-                  than the in-game line. Weewoo alerts use their own Weewoo Discord body.</p>
-
-                <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
-                  posts a log embed: the player's head and name, when the walls were confirmed
-                  clear, how long since the previous check, and their Raid Outpost/wall check
-                  counts. Leave the toggle off and these follow the wall bot's Discord settings; leave the URL blank and they fall back there too. The player
-                  head is fetched by Discord from <code>mc-heads.net</code>.</p>
-
-                <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
-                  trigger only when a player messages the bot privately, so a stray word in public
-                  chat can't fire it. <code>chat</code> reads public and faction chat instead.
-                  Anything else is treated as a custom <code>/regex/</code> capturing the player
-                  name then the message.</p>
-
-                <h4 class="card-subhead">Weewoo alerts</h4>
-                <div class="settings-grid">
-                  <label class="settings-label">Enable weewoo alerts</label>
-                  <button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button>
-
-                  <label class="settings-label">Weewoo message<br>
-                    <span class="label-sub">in-game chat</span></label>
-                  <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
-
-                  <label class="settings-label">Weewoo Discord body</label>
-                  <input class="text-input" placeholder="Check walls immediately and get online."
-                    data-setting="raid_discord_message" />
-
-                  <label class="settings-label">Weewoo repeat (ms)</label>
-                  <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
-
-                  <label class="settings-label">Weewoo on triggers</label>
-                  <input class="text-input" placeholder="weewoo" data-setting="raid_trigger" />
-
-                  <label class="settings-label">Weewoo off triggers</label>
-                  <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
-
-                  <label class="settings-label">Weewoo to its own Discord</label>
-                  <button class="toggle" data-setting="raid_to_discord" aria-pressed="false"></button>
-
-                  <label class="settings-label">Weewoo webhook URL</label>
-                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
-                    data-setting="raid_discord_webhook" />
-                </div>
-
-                <p class="hint">Triggers accept a comma-separated word list, matched on whole words,
-                  or a <code>/regex/</code> literal. Messages are sent exactly as written — start
-                  them with <code>/f c </code> to scope them to faction chat.</p>
-
-                <p class="hint"><strong>While a weewoo alert is running, wall reminders stop</strong>
-                  and resume when it's turned off. The Discord alert repeats on the interval below
-                  with a TNT icon, the raid headline, and a running <em>time since alert</em>;
-                  clearing it posts how long the alert lasted. Reminders also pause during quiet
-                  hours.</p>
-
-                <p class="hint"><strong>Weewoo webhook</strong> — leave the toggle off and weewoo
-                  alerts follow the wall bot's Discord settings above. Turn it on with a URL set,
-                  and weewoo alerts go to that channel instead, so alarms can live somewhere noisier than
-                  routine wall checks. If the toggle is on but the URL is blank, weewoo alerts fall back to
-                  the wall webhook rather than going nowhere.</p>
-
-                <p class="hint"><strong>Quiet hours</strong> — reminders stop, and in-game checks
-                  are refused with a note rather than counted. When the window lifts, the unchecked
-                  count restarts from zero, so the first message of the day isn't a number covering
-                  the whole night. The panel's <em>Mark checked</em> button still works as an
-                  operator override, and weewoo alerts are never gated — a raid is an emergency
-                  whenever it lands.</p>
-
-                <p class="hint">Quiet hours use <strong>the panel server's clock</strong>, not
-                  yours. A VPS usually runs on UTC — set <code>TZ=America/New_York</code> (or your
-                  zone) in <code>.env</code> and restart to make these times local.</p>
-              </div>
-            </section>
-          </div>
-
-          <!-- ============ Console ============ -->
-          <div id="view-console" class="view hidden">
-            <section class="card card-tall">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
-                <h3>Console</h3>
-                <select id="console-target" class="select-input console-select">
-                  <option value="all">All accounts</option>
-                </select>
-              </div>
-              <div class="card-body card-body-tall">
-                <!-- Filter by line kind. The server tags each line: server chat, a whisper,
-                     the panel's own log output, or an error. -->
-                <div class="console-filters">
-                  <button class="chip-btn on" data-kind="all">All</button>
-                  <button class="chip-btn" data-kind="chat">Chat</button>
-                  <button class="chip-btn" data-kind="whisper">Whispers</button>
-                  <button class="chip-btn" data-kind="system">System</button>
-                  <button class="chip-btn" data-kind="error">Errors</button>
-                </div>
-                <div id="console-output" class="console-output"></div>
-
-                <div class="console-input-row">
-                  <input id="chat-input" class="text-input" placeholder="Hello world" />
-                  <button id="send-btn" class="btn btn-pill">Send</button>
-                </div>
-                <div class="console-input-row">
-                  <input id="spam-message" class="text-input" placeholder="Spam message" data-setting="spam_message" />
-                  <input id="spam-delay" class="text-input" type="number" placeholder="Spam delay (ms)" data-setting="spam_delay_ms" />
-                  <button class="toggle" data-setting="spam_enabled" aria-pressed="false" title="Spam on/off"></button>
-                  <button id="clear-console" class="btn btn-pill">Clear console</button>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          <!-- ============ Settings ============ -->
-          <div id="view-settings" class="view hidden">
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-                <h3>Bot Settings</h3>
-              </div>
-              <div class="card-body">
-                <div class="settings-grid">
-                  <label class="settings-label">Server IP</label>
-                  <input id="set-server_ip" class="text-input" placeholder="play.server.com" data-setting="server_ip" />
-
-                  <label class="settings-label">Login message</label>
-                  <input id="set-login_message" class="text-input" placeholder="/server factions" data-setting="login_message" />
-
-                  <label class="settings-label">World change message</label>
-                  <input id="set-world_change_message" class="text-input" placeholder="/home afk" data-setting="world_change_message" />
-
-                  <label class="settings-label">Login delay (ms)</label>
-                  <input id="set-login_delay_ms" class="text-input" type="number" placeholder="4000" data-setting="login_delay_ms" />
-
-                  <label class="settings-label">Server version</label>
-                  <input id="set-server_version" class="text-input" placeholder="1.8.9" data-setting="server_version" />
-
-                  <label class="settings-label">Show chat in console</label>
-                  <button class="toggle" data-setting="show_chat" aria-pressed="false"></button>
-
-                  <label class="settings-label">Auto reconnect</label>
-                  <button class="toggle" data-setting="auto_reconnect" aria-pressed="false"></button>
-
-                  <label class="settings-label">Sneak</label>
-                  <button class="toggle" data-setting="sneak" aria-pressed="false"></button>
-
-                  <label class="settings-label">Anti AFK</label>
-                  <button class="toggle" data-setting="anti_afk" aria-pressed="false"></button>
-
-                  <label class="settings-label">Offline/cracked accounts</label>
-                  <button class="toggle" data-setting="offline_mode" aria-pressed="false"></button>
-
-                  <label class="settings-label">Leaderboard (hourly)</label>
-                  <button class="toggle" data-setting="leaderboard_enabled" aria-pressed="false"></button>
-
-                  <label class="settings-label">Leaderboard command</label>
-                  <input class="text-input" placeholder="/f top" data-setting="leaderboard_command" />
-
-                  <label class="settings-label">Leaderboard account</label>
-                  <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
-
-                  <label class="settings-label">Leaderboard to Discord</label>
-                  <button class="toggle" data-setting="leaderboard_to_discord" aria-pressed="false"></button>
-
-                  <label class="settings-label">Leaderboard webhook URL</label>
-                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..."
-                    data-setting="leaderboard_discord_webhook" />
-
-                  <label class="settings-label">Drop all items</label>
-                  <button id="drop-btn" class="btn btn-pill">Drop</button>
-
-                  <label class="settings-label">Equip armor</label>
-                  <button id="equip-btn" class="btn btn-pill">Equip</button>
-
-                  <label class="settings-label">Use held item</label>
-                  <button id="use-btn" class="btn btn-pill">Use</button>
-                </div>
-              </div>
-            </section>
-
-            <section class="card">
-              <div class="card-head">
-                <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/></svg>
-                <h3>Proxy Pool</h3>
-                <span class="card-meta">3 accounts per IP</span>
-              </div>
-              <div class="card-body">
-                <textarea class="text-input proxy-pool" rows="4" spellcheck="false"
-                  data-setting="proxy_pool"
-                  placeholder="direct&#10;socks5://user:pass@1.2.3.4:1080&#10;socks5://user:pass@1.2.3.5:1080"></textarea>
-                <p class="hint">Accounts fill each entry in order, 3 per IP. "direct" = this
-                  machine's IP. Leave blank to disable.</p>
-              </div>
-            </section>
           </div>
         </div>
 
-        <!-- Status rail. Shown beside the Accounts and Wall Bot views; hidden for Console and
-             Settings, which want the full width. Only real values here — no invented metrics. -->
-        <aside id="rail" class="rail">
-          <section class="card">
-            <div class="card-head"><h3 class="rail-title">System Status</h3></div>
-            <div class="card-body rail-body">
-              <div class="stat"><span class="stat-k">Bots online</span><span id="rail-online" class="stat-v">0/0</span></div>
-              <div class="stat"><span class="stat-k">Wall bot</span><span id="rail-wall" class="stat-v">off</span></div>
-              <div class="stat"><span class="stat-k">Last check</span><span id="rail-last" class="stat-v">—</span></div>
-              <div class="stat"><span class="stat-k">Total checks</span><span id="rail-total" class="stat-v">0</span></div>
-              <div class="stat"><span class="stat-k">Authorized</span><span id="rail-roster" class="stat-v">0</span></div>
-              <div class="stat"><span class="stat-k">Panel link</span><span id="rail-conn" class="stat-v">—</span></div>
-            </div>
-          </section>
+        <!-- ============ Wall Bot ============ -->
+        <div id="view-wall" class="view hidden">
+          <!-- Written by app.js; read by ui.js for the header sentence and the lantern. -->
+          <div class="sr-only">
+            <span id="wtile-state">off</span><span id="wtile-state-f">not running</span>
+            <span id="wtile-total">0</span>
+            <span id="wtile-last">—</span><span id="wtile-last-f"></span>
+            <span id="wtile-roster">0</span>
+          </div>
 
-          <section class="card">
-            <div class="card-head"><h3 class="rail-title">Recent Activity</h3></div>
-            <div class="card-body rail-body">
-              <div id="activity-list" class="activity"></div>
+          <div class="split">
+            <nav class="index" aria-label="Wall bot sections" data-sections="wall">
+              <button class="ix" data-section="overview" aria-pressed="true"><span class="n" aria-hidden="true">一</span><span class="ix-text"><span class="lbl">Overview</span><span class="hint-sm">today at a glance</span></span></button>
+              <button class="ix" data-section="walls" aria-pressed="false"><span class="n" aria-hidden="true">二</span><span class="ix-text"><span class="lbl">Walls</span><span class="hint-sm">rhythm and wording</span></span></button>
+              <button class="ix" data-section="outpost" aria-pressed="false"><span class="n" aria-hidden="true">三</span><span class="ix-text"><span class="lbl">Raid Outpost</span><span class="hint-sm">claimed · cooldown · live</span></span></button>
+              <button class="ix" data-section="weewoo" aria-pressed="false"><span class="n" aria-hidden="true">四</span><span class="ix-text"><span class="lbl">Weewoo</span><span class="hint-sm">the alarm</span></span></button>
+              <button class="ix" data-section="discord" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Discord</span><span class="hint-sm">where news goes</span></span></button>
+              <button class="ix" data-section="players" aria-pressed="false"><span class="n" aria-hidden="true">六</span><span class="ix-text"><span class="lbl">Players</span><span class="hint-sm">who may check</span></span></button>
+            </nav>
+
+            <div class="content">
+              <!-- 一 Overview -->
+              <section class="section" data-section-panel="overview">
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Overview</h3>
+                    <p class="section-desc">Who has been checking, and the switch that turns it all on.</p>
+                  </div>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Today</h4><p>The wall bot runs on one account.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <label class="toggle-row"><button class="toggle" data-setting="wall_enabled" aria-pressed="false"></button><span>Enable wall bot</span></label>
+                      <div class="field">
+                        <label class="field-label" for="set-wall_account">Wall bot account</label>
+                        <select id="set-wall_account" class="select-input" data-setting="wall_account"></select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Recent checks</h4><p>Who has walked the walls, most first.</p></div>
+                    <div class="ledger-fields">
+                      <div id="wall-summary" class="muted-note"></div>
+                      <div id="wall-list" class="data-list"></div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Records</h4><p>Download the counts, or start a new map.</p></div>
+                    <div class="ledger-fields">
+                      <div class="wall-actions">
+                        <button id="wall-export" class="btn btn-pill">Export JSON</button>
+                        <button id="wall-reset" class="btn btn-pill btn-danger">Reset stats</button>
+                      </div>
+                      <!-- Two-step confirm rather than window.confirm: a native modal blocks the page,
+                           which is exactly the wrong behavior when the panel is driven remotely. -->
+                      <div id="wall-reset-confirm" class="wall-confirm hidden">
+                        <span>Wipe all check counts? A JSON backup is saved first.</span>
+                        <button id="wall-reset-yes" class="btn btn-pill btn-red">Yes, reset</button>
+                        <button id="wall-reset-no" class="link-btn">Cancel</button>
+                      </div>
+                      <div id="wall-reset-result" class="wall-note"></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 二 Walls -->
+              <section class="section" data-section-panel="walls" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Walls</h3>
+                    <p class="section-desc">How often the bot asks, and what it says.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint"><strong>Messages</strong> — each line of a message is sent as its
+                      own chat message, 1.5s apart, so you can pair a public call-out with a private
+                      status line. Placeholders: <code>{minutes}</code> unchecked, <code>{player}</code>
+                      who checked last, <code>{checks}</code> that player's count,
+                      <code>{total}</code> checks all-time. Outpost messages add
+                      <code>{raidMinutes}</code>, <code>{raidPlayer}</code>, <code>{raidChecks}</code>
+                      and <code>{bot}</code> (the wall account&#39;s name).</p>
+                    <p class="hint"><strong>Listen on</strong> — <code>dm</code> (default) counts a
+                      trigger only when a player messages the bot privately, so a stray word in public
+                      chat can't fire it. <code>chat</code> reads public and faction chat instead.
+                      Anything else is treated as a custom <code>/regex/</code> capturing the player
+                      name then the message.</p>
+                    <p class="hint"><strong>Quiet hours</strong> — reminders stop, and in-game checks
+                      are refused with a note rather than counted. When the window lifts, the unchecked
+                      count restarts from zero, so the first message of the day isn't a number covering
+                      the whole night. The panel's <em>Mark checked</em> button still works as an
+                      operator override, and weewoo alerts are never gated — a raid is an emergency
+                      whenever it lands.</p>
+                    <p class="hint">Quiet hours use <strong>the panel server's clock</strong>, not
+                      yours. A VPS usually runs on UTC — set <code>TZ=America/New_York</code> (or your
+                      zone) in <code>.env</code> and restart to make these times local.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Rhythm</h4><p>When a reminder goes out, and what counts as a check.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label">Reminder interval (ms)</label>
+                        <input class="text-input" type="number" placeholder="600000" data-setting="wall_interval_ms" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Check triggers</label>
+                        <input class="text-input" placeholder="walls, check" data-setting="wall_trigger" />
+                      </div>
+                      <label class="toggle-row"><button class="toggle" data-setting="wall_to_minecraft" aria-pressed="false"></button><span>Send to Minecraft</span></label>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Wording</h4><p>What the bot says in chat.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label">Check confirmation</label>
+                        <input class="text-input" placeholder="Walls checked by {player} [{checks}]" data-setting="wall_check_message" />
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Reminder message <span class="label-sub">one chat message per line</span></label>
+                        <textarea class="text-input reminder-box" rows="2" spellcheck="false"
+                          data-setting="wall_reminder_message"
+                          placeholder="Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}"></textarea>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Quiet hours</h4><p>When to stay silent, and how players reach the bot.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label">Quiet hours start</label>
+                        <input class="text-input" placeholder="00:00" data-setting="wall_quiet_start" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Quiet hours end</label>
+                        <input class="text-input" placeholder="14:00" data-setting="wall_quiet_end" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Whisper command</label>
+                        <input class="text-input" placeholder="/msg" data-setting="wall_msg_command" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Listen on</label>
+                        <input class="text-input" placeholder="dm" data-setting="wall_chat_pattern" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 三 Raid Outpost -->
+              <section class="section" data-section-panel="outpost" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Raid Outpost</h3>
+                    <p class="section-desc">Followed from the server's own announcements.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint"><strong>Raid Outpost</strong> — set your faction and the bot follows
+                      the server&#39;s outpost broadcasts: claimed, 1-hour cooldown, then live. While it is
+                      live, players message the bot <code>raid</code> (or <code>walls raid</code>) and the
+                      reminder covers both. <strong>Grace period</strong> turns wall checks off entirely,
+                      so only the outpost is reminded; quiet hours mute walls but the outpost prompt
+                      still goes out.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Where it stands</h4><p>Updates as the server announces each step.</p></div>
+                    <div class="ledger-fields">
+                      <ol class="chips" data-outpost-chips>
+                        <li data-chip="idle">Idle</li>
+                        <li data-chip="claimed">Claimed</li>
+                        <li data-chip="cooldown">1h cooldown</li>
+                        <li data-chip="live">Live</li>
+                      </ol>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Your faction</h4><p>Blank faction means the outpost isn't tracked.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label">Our faction</label>
+                        <input class="text-input" placeholder="TurtleGang" data-setting="raid_outpost_faction" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Raid Outpost check triggers</label>
+                        <input class="text-input" placeholder="raid" data-setting="raid_outpost_trigger" />
+                      </div>
+                      <label class="toggle-row"><button class="toggle" data-setting="grace_period" aria-pressed="false"></button><span>Grace period (outpost only)</span></label>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Wording</h4><p>Sent while the outpost is live.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label">Raid Outpost reminder</label>
+                        <input class="text-input" data-setting="raid_outpost_reminder_message"
+                          placeholder="Check Raid Outpost /msg {bot} raid : Minutes since last checked: {raidMinutes}m [{raidPlayer}]" />
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Raid Outpost + walls reminder</label>
+                        <input class="text-input" data-setting="raid_outpost_combined_message"
+                          placeholder="Check Raid Outpost | Walls ... Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 四 Weewoo -->
+              <section class="section" data-section-panel="weewoo" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Weewoo</h3>
+                    <p class="section-desc">The alarm for when the base itself is under attack.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint">Triggers accept a comma-separated word list, matched on whole words,
+                      or a <code>/regex/</code> literal. Messages are sent exactly as written — start
+                      them with <code>/f c </code> to scope them to faction chat.</p>
+                    <p class="hint"><strong>While a weewoo alert is running, wall reminders stop</strong>
+                      and resume when it's turned off. The Discord alert repeats on the interval below
+                      with a TNT icon, the raid headline, and a running <em>time since alert</em>;
+                      clearing it posts how long the alert lasted.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>The alarm</h4><p>What it shouts, in game and on Discord.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <label class="toggle-row span-full"><button class="toggle" data-setting="raid_enabled" aria-pressed="false"></button><span>Enable weewoo alerts</span></label>
+                      <div class="field">
+                        <label class="field-label">Weewoo message <span class="label-sub">in-game chat</span></label>
+                        <input class="text-input" placeholder="RAID ALERT - DEFEND THE BASE" data-setting="raid_message" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Weewoo Discord body</label>
+                        <input class="text-input" placeholder="Check walls immediately and get online." data-setting="raid_discord_message" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Triggers</h4><p>How often it repeats, and the words that start and stop it.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label">Weewoo repeat (ms)</label>
+                        <input class="text-input" type="number" placeholder="15000" data-setting="raid_delay_ms" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Weewoo on triggers</label>
+                        <input class="text-input" placeholder="weewoo" data-setting="raid_trigger" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Weewoo off triggers</label>
+                        <input class="text-input" placeholder="weeoff, raidoff" data-setting="raid_off_trigger" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 五 Discord -->
+              <section class="section" data-section-panel="discord" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Discord</h3>
+                    <p class="section-desc">Webhooks for reminders, check logs and alarms.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint"><strong>Reminder embed body</strong> — Discord posts arrive as an
+                      embed with a coloured bar, a title and a timestamp. This field is the body of the
+                      reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
+                      than the in-game line. Weewoo alerts use their own Weewoo Discord body.</p>
+                    <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
+                      posts a log embed: the player's head and name, when the walls were confirmed
+                      clear, how long since the previous check, and their Raid Outpost/wall check
+                      counts. Left off, these follow the wall webhook; a blank URL falls back there
+                      too. The player head is fetched by Discord from <code>mc-heads.net</code>.</p>
+                    <p class="hint"><strong>Weewoo webhook</strong> — off, weewoo alerts follow the wall
+                      webhook. On with a URL set, they go to that channel instead, so alarms can live
+                      somewhere noisier than routine wall checks. A blank URL falls back to the wall
+                      webhook rather than going nowhere.</p>
+                    <p class="hint"><strong>Raid Outpost claimed/lost webhook</strong> — only the
+                      ownership news goes here: we claimed it, someone took it from us, our 12-hour hold
+                      ended. Leave it blank and that news falls back to the wall webhook. Raid Outpost
+                      reminders always go with the wall reminders.</p>
+                    <p class="hint"><strong>Role ping</strong> — embeds can't ping, so the mention is
+                      sent as a line above the embed, limited to that one role. A weewoo alert pings
+                      on its first post only, not on every repeat. For the ping to land, the role must
+                      be mentionable (or the webhook allowed to mention it) in Discord.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Wall reminders</h4><p>Posted as an embed with a coloured bar and a timestamp.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="webhook-group span-full">
+                        <label class="toggle-row"><button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button><span>Send to Discord</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Wall webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
+                        </div>
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Reminder embed body <span class="label-sub">markdown</span></label>
+                        <textarea class="text-input reminder-box" rows="2" spellcheck="false"
+                          data-setting="wall_discord_message"
+                          placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Other channels</h4><p>Left off, these follow the wall webhook above.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="webhook-group">
+                        <label class="toggle-row"><button class="toggle" data-setting="check_to_discord" aria-pressed="false"></button><span>Checks to a logs channel</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Logs webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_discord_webhook" />
+                        </div>
+                      </div>
+                      <div class="webhook-group">
+                        <label class="toggle-row"><button class="toggle" data-setting="raid_to_discord" aria-pressed="false"></button><span>Weewoo to its own Discord</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Weewoo webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_discord_webhook" />
+                        </div>
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Raid Outpost claimed/lost webhook</label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Role ping</h4><p>Mention a Discord role so its members get notified.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label" for="set-discord_ping_role">Role ID <span class="label-sub">Server Settings → Roles → ⋯ → Copy Role ID</span></label>
+                        <input id="set-discord_ping_role" class="text-input" placeholder="123456789012345678" inputmode="numeric" autocomplete="off" data-setting="discord_ping_role" />
+                      </div>
+                      <label class="toggle-row"><button class="toggle" data-setting="ping_weewoo" aria-pressed="false"></button><span>Ping on weewoo alerts</span></label>
+                      <label class="toggle-row"><button class="toggle" data-setting="ping_raid_outpost" aria-pressed="false"></button><span>Ping on Raid Outpost claimed/lost</span></label>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Preview</h4><p>How these posts look in Discord, with sample values and your current wording.</p></div>
+                    <div class="ledger-fields">
+                      <div id="discord-preview" class="discord-preview" aria-label="Discord embed preview"></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 六 Players -->
+              <section class="section" data-section-panel="players" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Players</h3>
+                    <p class="section-desc">Only these players' checks are counted when verification is on.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint">Added here = pre-verified. Players can also self-verify in game:
+                      they message the bot <code>verify &lt;password&gt;</code>, it whispers back a
+                      6-digit code, they reply <code>verify &lt;code&gt;</code> within 15 minutes.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Roster <span id="roster-count" class="card-meta">0</span></h4><p>Players added here are verified at once.</p></div>
+                    <div class="ledger-fields">
+                      <div class="account-inputs">
+                        <div class="input-group">
+                          <label class="field-label" for="roster-input">Minecraft username</label>
+                          <input id="roster-input" class="text-input" placeholder="Notch" />
+                        </div>
+                        <button id="roster-add" class="icon-btn" title="Add authorized player" aria-label="Add authorized player">＋</button>
+                      </div>
+                      <div id="roster-list" class="data-list"></div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Verification</h4><p>Let players add themselves with the faction password.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <label class="toggle-row"><button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button><span>Require verification</span></label>
+                      <div class="field">
+                        <label class="field-label">Faction password</label>
+                        <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
+                          autocomplete="off" data-setting="wall_verify_password" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-          </section>
-        </aside>
+          </div>
+        </div>
+
+        <!-- ============ Console ============ -->
+        <div id="view-console" class="view hidden">
+          <div class="console-bar">
+            <!-- Filter by line kind. The server tags each line: server chat, a whisper,
+                 the panel's own log output, or an error. -->
+            <div class="console-filters">
+              <button class="chip-btn on" data-kind="all">All</button>
+              <button class="chip-btn" data-kind="chat">Chat</button>
+              <button class="chip-btn" data-kind="whisper">Whispers</button>
+              <button class="chip-btn" data-kind="system">System</button>
+              <button class="chip-btn" data-kind="error">Errors</button>
+            </div>
+            <label class="sr-only" for="console-target">Show account</label>
+            <select id="console-target" class="select-input console-select">
+              <option value="all">All accounts</option>
+            </select>
+          </div>
+          <div id="console-output" class="console-output"></div>
+          <div class="console-input-row">
+            <label class="sr-only" for="chat-input">Chat message</label>
+            <input id="chat-input" class="text-input" placeholder="Say something as the selected account" />
+            <button id="send-btn" class="btn btn-green">Send</button>
+          </div>
+          <div class="console-input-row">
+            <label class="sr-only" for="spam-message">Spam message</label>
+            <input id="spam-message" class="text-input" placeholder="Spam message" data-setting="spam_message" />
+            <label class="sr-only" for="spam-delay">Spam delay (ms)</label>
+            <input id="spam-delay" class="text-input spam-delay" type="number" placeholder="Delay (ms)" data-setting="spam_delay_ms" />
+            <label class="toggle-row"><button class="toggle" data-setting="spam_enabled" aria-pressed="false"></button><span>Spam</span></label>
+            <button id="clear-console" class="btn btn-pill">Clear console</button>
+          </div>
+        </div>
+
+        <!-- ============ Settings ============ -->
+        <div id="view-settings" class="view hidden">
+          <div class="split">
+            <nav class="index" aria-label="Settings sections" data-sections="settings">
+              <button class="ix" data-section="connection" aria-pressed="true"><span class="n" aria-hidden="true">一</span><span class="ix-text"><span class="lbl">Connection</span><span class="hint-sm">server and login</span></span></button>
+              <button class="ix" data-section="automation" aria-pressed="false"><span class="n" aria-hidden="true">二</span><span class="ix-text"><span class="lbl">Automation</span><span class="hint-sm">while you're away</span></span></button>
+              <button class="ix" data-section="leaderboard" aria-pressed="false"><span class="n" aria-hidden="true">三</span><span class="ix-text"><span class="lbl">Leaderboard</span><span class="hint-sm">the hourly board</span></span></button>
+              <button class="ix" data-section="inventory" aria-pressed="false"><span class="n" aria-hidden="true">四</span><span class="ix-text"><span class="lbl">Inventory</span><span class="hint-sm">one-click actions</span></span></button>
+              <button class="ix" data-section="proxies" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Proxies</span><span class="hint-sm">one IP per three bots</span></span></button>
+            </nav>
+
+            <div class="content">
+              <section class="section" data-section-panel="connection">
+                <div class="section-head"><div>
+                  <h3 class="section-title">Connection</h3>
+                  <p class="section-desc">Where the bots join, and what they say on arrival.</p>
+                </div></div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Server</h4><p>Address and protocol version.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label" for="set-server_ip">Server IP</label>
+                        <input id="set-server_ip" class="text-input" placeholder="play.server.com" data-setting="server_ip" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label" for="set-server_version">Server version</label>
+                        <input id="set-server_version" class="text-input" placeholder="1.8.9" data-setting="server_version" />
+                      </div>
+                      <label class="toggle-row"><button class="toggle" data-setting="offline_mode" aria-pressed="false"></button><span>Offline/cracked accounts</span></label>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>On arrival</h4><p>Sent after login, and after each world change.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field">
+                        <label class="field-label" for="set-login_message">Login message</label>
+                        <input id="set-login_message" class="text-input" placeholder="/server factions" data-setting="login_message" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label" for="set-login_delay_ms">Login delay (ms)</label>
+                        <input id="set-login_delay_ms" class="text-input" type="number" placeholder="4000" data-setting="login_delay_ms" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label" for="set-world_change_message">World change message</label>
+                        <input id="set-world_change_message" class="text-input" placeholder="/home afk" data-setting="world_change_message" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section" data-section-panel="automation" hidden>
+                <div class="section-head"><div>
+                  <h3 class="section-title">Automation</h3>
+                  <p class="section-desc">What each bot does on its own.</p>
+                </div></div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Behaviour</h4><p>Applied to every connected bot.</p></div>
+                    <div class="ledger-fields toggle-grid">
+                      <label class="toggle-row"><button class="toggle" data-setting="show_chat" aria-pressed="false"></button><span>Show chat in console</span></label>
+                      <label class="toggle-row"><button class="toggle" data-setting="auto_reconnect" aria-pressed="false"></button><span>Auto reconnect</span></label>
+                      <label class="toggle-row"><button class="toggle" data-setting="sneak" aria-pressed="false"></button><span>Sneak</span></label>
+                      <label class="toggle-row"><button class="toggle" data-setting="anti_afk" aria-pressed="false"></button><span>Anti AFK</span></label>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section" data-section-panel="leaderboard" hidden>
+                <div class="section-head"><div>
+                  <h3 class="section-title">Leaderboard</h3>
+                  <p class="section-desc">Reads the server's faction board once an hour.</p>
+                </div></div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>The board</h4><p>Which command to run, and from which account.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <label class="toggle-row span-full"><button class="toggle" data-setting="leaderboard_enabled" aria-pressed="false"></button><span>Leaderboard (hourly)</span></label>
+                      <div class="field">
+                        <label class="field-label">Leaderboard command</label>
+                        <input class="text-input" placeholder="/f top" data-setting="leaderboard_command" />
+                      </div>
+                      <div class="field">
+                        <label class="field-label" for="set-leaderboard_account">Leaderboard account</label>
+                        <select id="set-leaderboard_account" class="select-input" data-setting="leaderboard_account"></select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Discord</h4><p>Post the board to its own channel.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="webhook-group span-full">
+                        <label class="toggle-row"><button class="toggle" data-setting="leaderboard_to_discord" aria-pressed="false"></button><span>Leaderboard to Discord</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Leaderboard webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="leaderboard_discord_webhook" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section" data-section-panel="inventory" hidden>
+                <div class="section-head"><div>
+                  <h3 class="section-title">Inventory</h3>
+                  <p class="section-desc">Acts on the account selected in Accounts, or all of them.</p>
+                </div></div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Actions</h4><p>One click, sent straight to the bot.</p></div>
+                    <div class="ledger-fields inventory-row">
+                      <button id="drop-btn" class="btn btn-pill">Drop all items</button>
+                      <button id="equip-btn" class="btn btn-pill">Equip armor</button>
+                      <button id="use-btn" class="btn btn-pill">Use held item</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section" data-section-panel="proxies" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Proxies</h3>
+                    <p class="section-desc">Spread the bots across addresses, three to each.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint">Accounts fill each entry in order, 3 per IP. "direct" = this
+                      machine's IP. Leave blank to disable.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Proxy pool</h4><p>One entry per line.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label">Pool</label>
+                        <textarea class="text-input proxy-pool" rows="4" spellcheck="false"
+                          data-setting="proxy_pool"
+                          placeholder="direct&#10;socks5://user:pass@1.2.3.4:1080&#10;socks5://user:pass@1.2.3.5:1080"></textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+
+      <!-- Night panel. Shown beside the Accounts and Wall Bot views (RAIL_VIEWS in app.js);
+           hidden for Console and Settings, which want the full width. -->
+      <aside id="rail" class="rail">
+        <h3 class="rail-title">Through the night</h3>
+        <p class="rail-sub">Recent activity</p>
+        <div id="activity-list" class="activity"></div>
+        <!-- Written by app.js; the lantern and header sentences show these instead. -->
+        <div class="sr-only">
+          <span id="rail-online">0/0</span><span id="rail-wall">off</span><span id="rail-last">—</span>
+          <span id="rail-total">0</span><span id="rail-roster">0</span><span id="rail-conn">—</span>
+        </div>
+      </aside>
+    </div>
   </div>
 
   <!-- ===== Microsoft device-code modal ===== -->
@@ -580,5 +785,7 @@
   </div>
 
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/ui.js"></script>
+  <script type="module" src="/embed-preview.js"></script>
 </body>
 </html>

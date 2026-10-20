@@ -635,9 +635,11 @@ function renderTiles(online) {
   const wstate = $('wtile-state');
   wstate.textContent = wall.raidActive ? 'WEEWOO' : (wall.active ? 'running' : 'off');
   wstate.className = 'tile-v sm' + (wall.raidActive ? ' bad' : (wall.active ? ' accent' : ''));
-  $('wtile-state-f').textContent = wall.raidActive ? 'weewoo alert active'
+  const outpost = wall.raidOutpostState && wall.raidOutpostState !== 'IDLE'
+    ? ` · outpost ${RAID_OUTPOST_LABELS[wall.raidOutpostState] || wall.raidOutpostState}` : '';
+  $('wtile-state-f').textContent = (wall.raidActive ? 'weewoo alert active'
     : wall.active ? (wall.accountOnline ? 'account online' : 'no account online')
-    : 'not running';
+    : 'not running') + outpost;
 
   $('wtile-total').textContent = String(wall.totalChecks);
   $('wtile-last').textContent = wall.lastCheckAt ? formatAgo(wall.lastCheckAt) : '—';
