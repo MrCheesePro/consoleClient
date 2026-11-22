@@ -518,6 +518,11 @@ $('wall-end').onclick = () => wsSend({ type: 'wallEnd' });
 $('wall-check').onclick = () => wsSend({ type: 'wallCheck', player: 'panel' });
 $('raid-start').onclick = () => wsSend({ type: 'raidStart' });
 $('raid-stop').onclick = () => wsSend({ type: 'raidStop' });
+// Outpost chips double as a manual override; chat broadcasts keep moving it from there.
+document.querySelector('[data-outpost-chips]').onclick = (e) => {
+  const chip = e.target.closest('[data-chip]');
+  if (chip) wsSend({ type: 'raidOutpostSet', state: chip.dataset.chip });
+};
 
 // The browser sandbox won't let us fetch-and-save, so hand the URL to the browser directly.
 $('wall-export').onclick = () => { location.href = '/api/wall/export'; };

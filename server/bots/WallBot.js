@@ -309,6 +309,35 @@ export default class WallBot {
   }
 
   /**
+   * Panel override for the Raid Outpost state, for when a broadcast was missed or misread. Chat
+   * broadcasts keep driving it from wherever this leaves it. No Discord notice: the operator
+   * already knows, and a hand-set state isn't news about who holds the outpost.
+   */
+  setRaidOutpost(userId, key) {
+    const next = { idle: 'IDLE', claimed: 'CLAIMED_GRACE', cooldown: 'COOLDOWN', live: 'ACTIVE_CHECKING' }[key];
+    if (!next) return;
+    const settings = getSettings.get(userId);
+    const faction = normalizePlayer(settings?.raid_outpost_faction);
+    const state = this._stateFor(userId);
+    const now = Date.now();
+    if (next === 'IDLE') {
+      this._resetRaidOutpost(state);
+      state.raidOutpostHolder = '';
+    } else {
+      if (state.raidOutpostState === 'IDLE' || next === 'CLAIMED_GRACE') state.raidOutpostClaimedAt = now;
+      if (next === 'ACTIVE_CHECKING' && state.raidOutpostState !== 'ACTIVE_CHECKING') {
+        state.lastRaidCheckAt = now;
+        state.lastRaidReminderAt = 0;
+      }
+      state.raidOutpostState = next;
+      state.raidOutpostHolder = faction;
+    }
+    this._console(userId, `Raid Outpost set to ${key} from the panel.`);
+    this._persist(userId, state);
+    this.broadcast(userId);
+  }
+
+  /**
    * Credit a check from the panel rather than from chat. Deliberately not gated by quiet hours:
    * the panel is the operator, and an override is the point of having a button. In-game triggers
    * are the ones that get refused.

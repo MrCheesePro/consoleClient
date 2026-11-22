@@ -331,6 +331,7 @@ export default class BotManager {
   manualCheck(userId, player) { this.wallBot.manualCheck(userId, player); }
   raidStart(userId) { this.wallBot.raidStart(userId); }
   raidStop(userId) { this.wallBot.raidStop(userId); }
+  setRaidOutpost(userId, key) { this.wallBot.setRaidOutpost(userId, key); }
   wallSnapshot(userId) { return this.wallBot.snapshot(userId); }
   wallBroadcast(userId) { this.wallBot.broadcast(userId); }
   wallReload(userId) { this.wallBot.reload(userId); }

@@ -1630,3 +1630,20 @@ test('Raid Outpost claimed pings when its toggle is on, and not when off', async
     db.updateSettings(USER, { wall_to_discord: 0, discord_ping_role: '', ping_raid_outpost: 1 });
   }
 });
+
+test('the panel can set the outpost state, and chat keeps driving it after', () => {
+  const { wb, session } = raidOutpostHarness();
+  try {
+    const state = wb._stateFor(USER);
+    wb.setRaidOutpost(USER, 'cooldown');
+    assert.equal(state.raidOutpostState, 'COOLDOWN');
+    assert.equal(state.raidOutpostHolder, 'turtlegang');
+    wb.handleChat(USER, session, 'A RAID OUTPOST HAS STARTED!');
+    assert.equal(state.raidOutpostState, 'ACTIVE_CHECKING');
+    wb.setRaidOutpost(USER, 'idle');
+    assert.equal(state.raidOutpostState, 'IDLE');
+    assert.equal(db.getWallState.get(USER).raid_outpost_state, 'IDLE', 'persisted');
+    wb.setRaidOutpost(USER, 'bogus');
+    assert.equal(state.raidOutpostState, 'IDLE', 'unknown keys are ignored');
+  } finally { wb.stopAll(); }
+});

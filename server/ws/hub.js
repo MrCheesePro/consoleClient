@@ -72,6 +72,7 @@ export default class Hub {
       case 'wallCheck': bm.manualCheck(userId, msg.player); break;
       case 'raidStart': bm.raidStart(userId); break;
       case 'raidStop': bm.raidStop(userId); break;
+      case 'raidOutpostSet': bm.setRaidOutpost(userId, msg.state); break;
       default: break;
     }
   }

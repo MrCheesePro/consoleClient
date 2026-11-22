@@ -84,7 +84,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - The client measures its own socket latency with a `ping`/`pong` pair handled in `hub.js`.
 - **Wall bot** state (`wallState`) streams over WS like `leaderboard` does — `hub.handleUpgrade`
   replays a snapshot on (re)connect. Inbound control messages: `wallStart`, `wallEnd`,
-  `wallCheck`, `raidStart`, `raidStop`. But the stats **export/reset** and the **roster CRUD**
+  `wallCheck`, `raidStart`, `raidStop`, `raidOutpostSet` (panel override of the outpost state; chat broadcasts keep driving it afterward, no Discord notice). But the stats **export/reset** and the **roster CRUD**
   live on REST (`/api/wall/*`) because they're file- and CRUD-shaped, not live data.
 - `BotSession` takes an optional `onChat` callback that fires for every incoming chat line
   regardless of the `show_chat` display setting — that's how `WallBot` observes chat without

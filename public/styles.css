@@ -479,6 +479,9 @@ textarea.text-input {
 }
 .chips li + li::before { content: "→"; color: var(--text-faint); margin: 0 10px 0 -2px; position: relative; left: -18px; display: none; }
 .chips li.on { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 500; }
+.chips li { padding: 0; }
+.chips button { font: inherit; color: inherit; background: none; border: 0; padding: 7px 14px; border-radius: inherit; cursor: pointer; }
+.chips li:not(.on):hover { color: var(--text); }
 
 .inventory-row { display: flex; flex-wrap: wrap; gap: 10px; }
 
