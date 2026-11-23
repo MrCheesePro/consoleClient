@@ -1663,6 +1663,9 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
   assert.ok(whisper, 'link whispered');
   const token = /\/r\/([A-Za-z0-9_-]+)/.exec(whisper)[1];
   assert.match(whisper, /\(to snitch\) .*https:\/\/report\.example\.com\/r\//);
+  // Minecraft caps chat at 100 characters, and the link goes out as `/msg <name> <text>`.
+  const body = whisper.replace(/^.*\(to snitch\) /, '');
+  assert.ok(`/msg ${'x'.repeat(16)} ${body}`.length <= 100, `whisper too long: ${body}`);
 
   const posts = [];
   const emitted = [];
@@ -1729,6 +1732,6 @@ test('report: verified-only switch is independent of the wall bot', () => {
   try {
     wb.handleChat(USER, session, 'Stranger: report');
     assert.ok(!lines.some((l) => l.includes('/r/')), 'unverified player refused');
-    assert.ok(lines.some((l) => l.includes('not verified')));
+    assert.ok(!lines.some((l) => l.includes('(to stranger)')), 'and gets no reply at all');
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_verified_only: 1 }); }
 });

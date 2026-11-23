@@ -8,14 +8,16 @@ import { getSettings, insertReport } from './db/db.js';
 
 export const REPORT_TTL_MS = 30 * 60 * 1000;
 export const REPORT_MAX_LEN = 2000;
-const TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
+const TOKEN_RE = /^[A-Za-z0-9_-]{16}$/;
 
 // ponytail: in-memory, so a restart kills outstanding links; persist if that ever matters.
 const tokens = new Map(); // token -> { userId, player, expiresAt }
 
 export function issueReportToken(userId, player, now = Date.now()) {
   for (const [t, v] of tokens) if (v.expiresAt <= now) tokens.delete(t);
-  const token = crypto.randomBytes(16).toString('base64url');
+  // 12 bytes (96 bits, 16 chars): plenty for a 30-minute single-use link, and short enough that
+  // `/msg <16-char name> Report: <url>` stays under Minecraft's 100-character chat limit.
+  const token = crypto.randomBytes(12).toString('base64url');
   tokens.set(token, { userId, player, expiresAt: now + REPORT_TTL_MS });
   return token;
 }

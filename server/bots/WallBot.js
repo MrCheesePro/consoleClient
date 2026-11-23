@@ -491,9 +491,13 @@ export default class WallBot {
       this._notifyOnce(userId, player, 'Reports are turned off right now.');
       return true;
     }
-    // Reports have their own verified-only switch, independent of the wall bot's.
+    // Reports have their own verified-only switch, independent of the wall bot's. An unverified
+    // player gets no reply at all, so the bot doesn't advertise that reports exist.
     const gate = { ...settings, wall_require_verified: settings.reports_verified_only };
-    if (!this._requireAuthorized(userId, gate, player)) return true;
+    if (!this._isAuthorized(userId, gate, player)) {
+      this._console(userId, `Ignored report request from unverified ${player}.`);
+      return true;
+    }
 
     const state = this._stateFor(userId);
     const now = Date.now();
@@ -505,7 +509,8 @@ export default class WallBot {
     }
     recent.push(now);
     state.reportRequests.set(player, recent);
-    this._whisper(userId, player, `Report form (one use, 30 min): ${reportUrl(issueReportToken(userId, player, now))}`);
+    // Keep this short: the whole `/msg <player> ...` line must fit in 100 characters.
+    this._whisper(userId, player, `Report: ${reportUrl(issueReportToken(userId, player, now))}`);
     return true;
   }
 
