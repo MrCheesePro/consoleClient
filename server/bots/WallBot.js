@@ -793,7 +793,8 @@ export default class WallBot {
     let bans;
     try {
       const res = await fetch(BANS_URL, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)' }, signal: AbortSignal.timeout(10000),
+        // The site 404s Node fetch's default `Accept-Language: *`; a real locale gets the page.
+        headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       bans = parseBans(await res.text());
