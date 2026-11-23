@@ -4,7 +4,7 @@ import {
   topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker, lastRaidChecker,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
-  RAID_OUTPOST_REMINDER_DEFAULT, RAID_OUTPOST_COMBINED_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
+  RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
 
 // Discord embed accent colours, as the integers the webhook API expects.
@@ -791,8 +791,10 @@ export default class WallBot {
       let template;
       let embed;
       if (live && !paused) {
-        // Outpost live in normal hours: one combined line whenever either side is overdue.
-        template = settings.raid_outpost_combined_message || RAID_OUTPOST_COMBINED_DEFAULT;
+        // Outpost live in normal hours: whenever either side is overdue, send both reminders as two
+        // chat messages. One combined line ran past the server's chat limit and got cut in half.
+        template = `${settings.raid_outpost_reminder_message || RAID_OUTPOST_REMINDER_DEFAULT}\n`
+          + (settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.');
         embed = { title: 'Raid Outpost | Walls Alert!', description: `${raidBody}\n\n${wallBody}` };
       } else if (wallDue) {
         template = settings.wall_reminder_message || 'Wall check! Last checked {minutes}m ago.';

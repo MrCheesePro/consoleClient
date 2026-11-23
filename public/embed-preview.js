@@ -13,8 +13,6 @@ const DISCORD_RAID_DEFAULT = 'Check walls immediately and get online.';
 // In-game chat defaults (server/db/db.js), shown under each reminder as the line sent to Minecraft.
 const REMINDER_DEFAULT = 'Check Walls /msg captunnel WALLS : Minutes since last checked: {minutes} by {player}';
 const RAID_OUTPOST_REMINDER_DEFAULT = 'Check Raid Outpost /msg {bot} raid : Minutes since last checked: {raidMinutes}m [{raidPlayer}]';
-const RAID_OUTPOST_COMBINED_DEFAULT = 'Check Raid Outpost | Walls /msg {bot} walls / raid : Minutes since last checked: '
-  + 'Raid: {raidMinutes}m [{raidPlayer}] | Walls: {minutes}m [{player}]';
 const SAMPLE = { minutes: 12, player: 'zghostx', checks: 127, total: 342, raidMinutes: 5, raidPlayer: 'acesoft', raidChecks: 9, bot: 'WallBot' };
 
 const value = (key) => document.querySelector(`[data-setting="${key}"]`)?.value?.trim() || '';
@@ -123,7 +121,7 @@ function render() {
       name: 'Walls + Raid Outpost, bundled', channel: 'wall', color: COLORS.alert,
       when: 'While the Raid Outpost is live (outside grace period and quiet hours): one post covering both.',
       title: 'Raid Outpost | Walls Alert!', description: `${raidBody}\n\n${wallBody}`,
-      chat: fill(value('raid_outpost_combined_message') || RAID_OUTPOST_COMBINED_DEFAULT, SAMPLE),
+      chat: fill(`${value('raid_outpost_reminder_message') || RAID_OUTPOST_REMINDER_DEFAULT}\n${value('wall_reminder_message') || REMINDER_DEFAULT}`, SAMPLE),
     }),
     embed({
       name: 'Wall reminder', channel: 'wall', color: COLORS.alert,

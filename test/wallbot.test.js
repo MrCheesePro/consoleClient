@@ -1434,7 +1434,7 @@ test('quiet hours with the outpost live still send the raid line (Mode C)', () =
   } finally { wb.stopAll(); }
 });
 
-test('outpost live: either side overdue sends the combined line, paced per side (Mode B)', () => {
+test('outpost live: either side overdue sends raid and wall lines separately, paced per side (Mode B)', () => {
   const { wb, session, lines } = raidOutpostHarness();
   try {
     const state = wb._stateFor(USER);
@@ -1445,13 +1445,13 @@ test('outpost live: either side overdue sends the combined line, paced per side 
     lines();
     wb._tick();
     assert.deepEqual(lines(), [
-      'Check Raid Outpost | Walls /msg wallbot walls / raid : Minutes since last checked: '
-      + 'Raid: 2m [nobody] | Walls: 1m [nobody]',
+      'Check Raid Outpost /msg wallbot raid : Minutes since last checked: 2m [nobody]',
+      'REMINDER',
     ]);
     // Walls fall due right after: the raid reminder just sent must not hold it back.
     state.lastCheckAt = Date.now() - 2 * 60000;
     wb._tick();
-    assert.equal(lines().length, 1);
+    assert.equal(lines().length, 2);
     // Both paced now — nothing more this tick.
     wb._tick();
     assert.deepEqual(lines(), []);

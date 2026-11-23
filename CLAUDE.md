@@ -153,7 +153,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `raid_outpost_discord_webhook` whenever it is non-empty (no toggle), else the wall webhook.
   Outpost *reminders* go to the wall channel with the wall reminders — the server already says them in game.
 - Reminder modes in `_tick`: `grace_period` and quiet hours both pause walls (leaving either
-  restarts the wall count via `quietEndedAt`). Outpost live + not paused → combined line whenever
+  restarts the wall count via `quietEndedAt`). Outpost live + not paused → raid line then wall line, as two chat messages, whenever
   either side is due; paused + outpost live → raid line only (still sent in-game and to Discord);
   otherwise the plain wall reminder. Walls and outpost pace on separate clocks
   (`lastReminderAt` / `lastRaidReminderAt`) so one never suppresses the other.
