@@ -1746,20 +1746,15 @@ test('report: verified-only switch is independent of the wall bot', () => {
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_verified_only: 1 }); }
 });
 
-test('report embeds: number, names, heads, then message; anonymous never names the sender', async () => {
-  const { reportEmbeds } = await import('../server/report.js');
-  const [top, second, msg] = reportEmbeds({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
-  assert.equal(top.title, '🚩 Report #7');
-  assert.deepEqual(top.fields.map((f) => f.value), ['griefer123', 'snitch']);
-  assert.match(top.image.url, /griefer123/);
-  assert.match(second.image.url, /snitch/);
-  assert.equal(top.url, second.url, 'shared url merges the two heads into one gallery');
-  assert.equal(msg.description, '> line one\n> line two');
-
-  const anon = reportEmbeds({ id: 8, kind: 'praise', text: 'x', about: 'not a name!' });
+test('report embed: named shows the sender, anonymous never does; kind sets colour', async () => {
+  const { reportEmbed } = await import('../server/report.js');
+  const named = reportEmbed({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
+  assert.equal(named.title, '🚩 Report #7');
+  assert.equal(named.description, 'Report from **snitch**\n\n> line one\n> line two');
+  assert.match(named.thumbnail.url, /griefer123/);
+  const anon = reportEmbed({ id: 8, kind: 'praise', text: 'x', about: 'not a name!' });
   assert.ok(!JSON.stringify(anon).includes('snitch'));
-  assert.equal(anon[0].title, '🌟 Shout-out #8');
-  assert.equal(anon[0].color, 0x2ECC71);
-  assert.match(anon[0].image.url, /MHF_Question/, 'non-username gets the ? head');
-  assert.match(anon[1].image.url, /MHF_Question/, 'anonymous sender gets the ? head');
+  assert.match(anon.description, /^Anonymous shout-out\n/);
+  assert.equal(anon.color, 0x2ECC71);
+  assert.equal(anon.thumbnail, undefined, 'no head for a non-username');
 });

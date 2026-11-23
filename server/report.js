@@ -153,53 +153,46 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
   return router;
 }
 
-// 3D head render. MHF_Question is Mojang's "?" head: stands in for an anonymous sender or a
-// "who is this about" that isn't a Minecraft name.
-const HEAD_URL = (name) => `https://mc-heads.net/head/${encodeURIComponent(name)}/128`;
+const HEAD_URL = (name) => `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
 const MC_NAME_RE = /^\w{3,16}$/;
-const UNKNOWN_HEAD = 'MHF_Question';
 
 export const REPORT_KINDS = {
   report: { color: 0x8B5A2B, title: '🚩 Report', target: 'Reported player', footer: 'Turtle Council · Reports' },
   praise: { color: 0x2ECC71, title: '🌟 Shout-out', target: 'Shout-out for', footer: 'Turtle Council · Shout-outs' },
 };
 
-/**
- * The embeds for one report, in reading order: number, then who it's about and who sent it, then
- * both heads, then the message, then the footer. Discord draws an image *below* the fields, and
- * merges the images of embeds that share a `url` into one gallery, so cards 1 and 2 (same url)
- * show the two heads side by side under the names. The message has to be its own card 3 to sit
- * below the heads. `player` is set only when the reporter chose to be named; otherwise nothing
- * here identifies them. public/embed-preview.js draws a picture of this shape.
- */
-export function reportEmbeds({ id, kind = 'report', text, about, player }) {
+// Shared shape with the panel preview (public/embed-preview.js mirrors it). `player` is set only
+// when the reporter chose to be named; otherwise nothing in the embed identifies them.
+export function reportEmbed({ id, kind = 'report', text, about, player }) {
   const k = REPORT_KINDS[kind] || REPORT_KINDS.report;
-  const target = MC_NAME_RE.test(about) ? about : '';
-  // Same url on cards 1 and 2 is what merges their images. It also makes the title a link.
-  const url = target ? `https://namemc.com/profile/${encodeURIComponent(target)}` : 'https://namemc.com/';
   // Quote every line so the message reads as the player's own words.
-  const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 4000);
-  return [
-    {
-      color: k.color, url, title: `${k.title} #${id}`,
-      fields: [
-        { name: k.target, value: about || '*not given*', inline: true },
-        { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
-      ],
-      image: { url: HEAD_URL(target || UNKNOWN_HEAD) },
-    },
-    { color: k.color, url, image: { url: HEAD_URL(player || UNKNOWN_HEAD) } },
-    { color: k.color, description: quoted, footer: { text: k.footer }, timestamp: new Date().toISOString() },
-  ];
+  const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 3900);
+  const word = kind === 'praise' ? 'Shout-out' : 'Report';
+  // Number on top as the title, who sent it on the line under. Discord always draws `author` above
+  // the title, so the "from" line lives at the top of the description instead.
+  const from = player ? `${word} from **${player}**` : `Anonymous ${word.toLowerCase()}`;
+  const embed = {
+    color: k.color,
+    title: `${k.title} #${id}`,
+    description: `${from}\n\n${quoted}`,
+    fields: [
+      { name: k.target, value: about || '*not given*', inline: true },
+      { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
+    ],
+    footer: { text: k.footer },
+    timestamp: new Date().toISOString(),
+  };
+  if (MC_NAME_RE.test(about)) embed.thumbnail = { url: HEAD_URL(about) };
+  return embed;
 }
 
 async function postToDiscord(webhook, report) {
-  const embeds = reportEmbeds(report);
+  const embed = reportEmbed(report);
   const res = await fetch(webhook, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // allowed_mentions empty: a report can never ping anyone, whatever it contains.
-    body: JSON.stringify({ embeds, allowed_mentions: { parse: [] } }),
+    body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }

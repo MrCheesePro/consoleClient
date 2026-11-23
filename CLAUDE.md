@@ -165,8 +165,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - **Reports**: whispering `report` gets a one-time `PUBLIC_URL/r/<token>` link (30 min, 3 per
   player per hour). `/r` is mounted **outside** `requireAuth` on purpose. A submission is saved to the
   `reports` table first (its `id` is the ticket number, sender included) and streamed to the panel as
-  `reportFiled`; the Discord post (`reportEmbeds`: three embeds — number + names, a second sharing its `url` so the
-  two heads merge into one gallery, then the message; `kind` is `report` (brown) or `praise` (green)) carries the ticket number and the sender **only if the reporter picked
+  `reportFiled`; the Discord post (`reportEmbed`, one embed; `kind` is `report` (brown) or `praise` (green)) carries the ticket number and the sender **only if the reporter picked
   "Show my name"** on the form (`reports.anonymous`, default 1; anything but `identity=named` stays
   anonymous) — keep that split.
   "Who is this about?" is a dropdown of **verified** `wall_players` (minus the reporter); the POST

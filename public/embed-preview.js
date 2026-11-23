@@ -82,7 +82,7 @@ function pingLine(toggleKey) {
   return m ? '@Role' : null;
 }
 
-function embed({ name, when, channel, color, author, title, description, fields, footer, noFooter, chat, ping }) {
+function embed({ name, when, channel, color, author, thumb, title, description, fields, footer, chat, ping }) {
   const wrap = el('figure', 'dp-item');
   const where = destination(channel);
   const cap = el('figcaption', 'dp-caption');
@@ -98,6 +98,8 @@ function embed({ name, when, channel, color, author, title, description, fields,
     a.append(el('span', 'dp-avatar'), el('span', '', author));
     card.appendChild(a);
   }
+  // Discord floats the thumbnail top-right; a placeholder square stands in for the player head.
+  if (thumb) card.prepend(el('span', 'dp-thumb'));
   if (title) card.appendChild(el('div', 'dp-title', title));
   if (description) { const d = el('div', 'dp-desc'); d.appendChild(markdown(description)); card.appendChild(d); }
   if (fields?.length) {
@@ -110,7 +112,7 @@ function embed({ name, when, channel, color, author, title, description, fields,
     }
     card.appendChild(g);
   }
-  if (!noFooter) card.appendChild(el('div', 'dp-footer', `${footer ? `${footer} • ` : ''}Today at 10:00 AM`));
+  card.appendChild(el('div', 'dp-footer', `${footer ? `${footer} • ` : ''}Today at 10:00 AM`));
   wrap.appendChild(card);
   if (chat) {
     // One chat message per line, the way WallBot#_send splits it.
@@ -122,33 +124,26 @@ function embed({ name, when, channel, color, author, title, description, fields,
   return wrap;
 }
 
-// The report post from server/report.js#reportEmbeds: number, names, both heads side by side
-// (Discord merges cards 1 and 2 into one gallery), then the message card with the footer.
+// The report embed from server/report.js#reportEmbed, for both kinds and both identity choices.
 const KIND_PREVIEW = {
   report: { color: '#8B5A2B', title: '🚩 Report', target: 'Reported player', footer: 'Turtle Council · Reports' },
   praise: { color: '#2ECC71', title: '🌟 Shout-out', target: 'Shout-out for', footer: 'Turtle Council · Shout-outs' },
 };
-function reportCard({ kind, named, id, text }) {
+const reportCard = ({ kind, named, id, text }) => {
   const k = KIND_PREVIEW[kind];
-  const wrap = embed({
+  const word = kind === 'praise' ? 'Shout-out' : 'Report';
+  return embed({
     name: `${kind === 'praise' ? 'Good message' : 'Report'}, ${named ? 'named' : 'anonymous'}`,
-    channel: 'report', color: k.color, title: `${k.title} #${id}`, noFooter: true,
+    channel: 'report', color: k.color, thumb: true,
+    title: `${k.title} #${id}`,
+    description: `${named ? `${word} from **zghostx**` : `Anonymous ${word.toLowerCase()}`}\n\n${text}`,
     fields: [
       { name: k.target, value: 'griefer123', inline: true },
       { name: 'Submitted by', value: named ? 'zghostx' : '🕶️ Anonymous', inline: true },
     ],
+    footer: k.footer,
   });
-  const top = wrap.querySelector('.dp-embed');
-  const heads = el('div', 'dp-heads');
-  heads.append(el('span', 'dp-head', 'griefer123'), el('span', 'dp-head', named ? 'zghostx' : '?'));
-  top.appendChild(heads);
-  const msg = el('div', 'dp-embed');
-  msg.style.borderLeftColor = k.color;
-  const d = el('div', 'dp-desc'); d.appendChild(markdown(text)); msg.appendChild(d);
-  msg.appendChild(el('div', 'dp-footer', `${k.footer} • Today at 10:00 AM`));
-  top.after(msg);
-  return wrap;
-}
+};
 
 function renderReport() {
   const root = document.getElementById('report-preview');
