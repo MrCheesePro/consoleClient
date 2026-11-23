@@ -51,6 +51,8 @@ async function showApp() {
   renderLeaderboard();
   renderWallBot();
   renderActivity();
+  reports = await api('/api/reports').catch(() => []);
+  renderReports();
   updateAccountForm();
   routeFromHash();
   connectWs();
@@ -206,6 +208,11 @@ function handleWs(msg) {
         accountOnline: !!msg.accountOnline,
       };
       renderWallBot();
+      break;
+    case 'reportFiled':
+      reports.unshift(msg.report);
+      renderReports();
+      appendConsole({ text: `Report #${msg.report.id} filed by ${msg.report.player}.` });
       break;
     case 'error':
       appendConsole({ text: msg.message, error: true });
@@ -704,6 +711,34 @@ function renderWallBot() {
   }
 
   renderRoster();
+}
+
+let reports = [];
+
+function renderReports() {
+  $('reports-count').textContent = String(reports.length);
+  const list = $('reports-list');
+  list.innerHTML = '';
+  if (!reports.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leaderboard-empty';
+    empty.textContent = 'No reports yet.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const r of reports) {
+    const row = document.createElement('div');
+    row.className = 'report-row';
+    const head = document.createElement('div');
+    head.className = 'report-head';
+    const when = new Date(r.created_at).toLocaleString([], { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    head.textContent = `#${r.id} · from ${r.player}${r.about ? ` · about ${r.about}` : ''} · ${when}`;
+    const body = document.createElement('div');
+    body.className = 'report-text';
+    body.textContent = r.text;
+    row.append(head, body);
+    list.appendChild(row);
+  }
 }
 
 function renderRoster() {

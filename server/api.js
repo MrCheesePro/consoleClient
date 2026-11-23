@@ -8,6 +8,7 @@ import {
   getAccountById, getSettings, updateSettings,
   getWallState, allWallCheckers, listWallPlayers, upsertWallPlayer, deleteWallPlayer,
   resetWallStats,
+  listReports,
 } from './db/db.js';
 import { authenticateMicrosoft } from './auth/mcAuth.js';
 import { normalizePlayer } from './bots/WallBot.js';
@@ -220,6 +221,10 @@ export function createApiRouter({ botManager, emitToUser }) {
     deleteWallPlayer.run(userId, normalizePlayer(req.params.player));
     botManager.wallBroadcast(userId);
     res.json(listWallPlayers.all(userId));
+  });
+
+  router.get('/reports', (req, res) => {
+    res.json(listReports.all(req.session.userId));
   });
 
   return router;

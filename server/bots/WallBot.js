@@ -6,6 +6,7 @@ import {
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
   RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
+import { issueReportToken, reportUrl } from '../report.js';
 
 // Discord embed accent colours, as the integers the webhook API expects.
 const COLOR_ALERT = 0xED4245; // red — reminders and raids
@@ -30,6 +31,7 @@ const SEND_GAP_MS = 1500;              // minimum spacing between outbound chat 
 const HOUR_MS = 60 * 60 * 1000;
 const VERIFY_MAX_PER_HOUR = 5;         // wrong password/code guesses allowed per player, per hour
 const CODE_TTL_MS = 15 * 60 * 1000;    // how long an issued verification code stays usable
+const REPORT_MAX_PER_HOUR = 3;         // report links one player can request per hour
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
 
@@ -261,6 +263,7 @@ export default class WallBot {
       notices: new Map(),        // player -> ts of last "please verify" reply
       verifyAttempts: new Map(), // player -> [ts, ...] of wrong password/code guesses this hour
       pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
+      reportRequests: new Map(), // player -> [ts, ...] of report links issued this hour
       queue: [],                 // pending outbound messages
       sendTimer: null,
       lastSentAt: 0,
@@ -372,6 +375,7 @@ export default class WallBot {
     if (this._isSelf(userId, session, player, message)) return;
 
     if (this._handleVerify(userId, settings, player, message)) return;
+    if (this._handleReport(userId, settings, player, message)) return;
     if (this._handleRaidTriggers(userId, settings, player, message)) return;
     this._handleCheckTrigger(userId, settings, player, message);
   }
@@ -470,6 +474,32 @@ export default class WallBot {
     this._whisper(userId, player, pending ? 'Wrong code.' : 'Wrong password.');
     // Log that it happened, never what was guessed — the console is visible in the panel.
     this._console(userId, `Failed verify attempt from ${player} (${left} left this hour).`);
+    return true;
+  }
+
+  /**
+   * `report` — whisper back a one-time link to the report form (server/report.js). The sender
+   * is recorded with the ticket in the panel; Discord only ever sees the ticket number.
+   */
+  _handleReport(userId, settings, player, message) {
+    if (!/^\s*report\b/i.test(message)) return false;
+    if (!process.env.PUBLIC_URL || !settings.report_discord_webhook) {
+      this._notifyOnce(userId, player, 'Anonymous reports are not set up.');
+      return true;
+    }
+    if (!this._requireAuthorized(userId, settings, player)) return true;
+
+    const state = this._stateFor(userId);
+    const now = Date.now();
+    const recent = (state.reportRequests.get(player) || []).filter((ts) => now - ts < HOUR_MS);
+    if (recent.length >= REPORT_MAX_PER_HOUR) {
+      state.reportRequests.set(player, recent);
+      this._notifyOnce(userId, player, 'Too many report links this hour. Try again later.');
+      return true;
+    }
+    recent.push(now);
+    state.reportRequests.set(player, recent);
+    this._whisper(userId, player, `Report form (one use, 30 min): ${reportUrl(issueReportToken(userId, player, now))}`);
     return true;
   }
 

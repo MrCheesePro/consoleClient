@@ -116,6 +116,7 @@ db.exec(`
     raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}',
     raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}',
     raid_outpost_discord_webhook TEXT NOT NULL DEFAULT '',
+    report_discord_webhook TEXT NOT NULL DEFAULT '',
     discord_ping_role     TEXT    NOT NULL DEFAULT '',
     ping_weewoo           INTEGER NOT NULL DEFAULT 1,
     ping_raid_outpost     INTEGER NOT NULL DEFAULT 1
@@ -157,6 +158,16 @@ db.exec(`
     label    TEXT    NOT NULL DEFAULT '',
     added_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, player)
+  );
+
+  -- Report log. id is the ticket number shown in Discord and the panel.
+  CREATE TABLE IF NOT EXISTS reports (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player     TEXT    NOT NULL,
+    about      TEXT    NOT NULL DEFAULT '',
+    text       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
   );
 `);
 
@@ -205,6 +216,7 @@ db.exec(`
   addColumn('discord_ping_role', `discord_ping_role TEXT NOT NULL DEFAULT ''`);
   addColumn('ping_weewoo', `ping_weewoo INTEGER NOT NULL DEFAULT 1`);
   addColumn('ping_raid_outpost', `ping_raid_outpost INTEGER NOT NULL DEFAULT 1`);
+  addColumn('report_discord_webhook', `report_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
 }
 
@@ -324,7 +336,7 @@ const SETTINGS_FIELDS = [
   'check_to_discord', 'check_discord_webhook',
   'grace_period', 'raid_outpost_faction', 'raid_outpost_trigger',
   'raid_outpost_reminder_message', 'raid_outpost_combined_message',
-  'raid_outpost_discord_webhook',
+  'raid_outpost_discord_webhook', 'report_discord_webhook',
   'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost',
 ];
 
@@ -405,6 +417,13 @@ export const upsertWallPlayer = db.prepare(`
   VALUES (@user_id, @player, @verified, @label, @added_at)
   ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label
 `);
+export const insertReport = db.prepare(
+  `INSERT INTO reports (user_id, player, about, text, created_at)
+   VALUES (@user_id, @player, @about, @text, @created_at)`
+);
+export const listReports = db.prepare(
+  `SELECT id, player, about, text, created_at FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 200`
+);
 export const deleteWallPlayer = db.prepare(
   `DELETE FROM wall_players WHERE user_id = ? AND player = ?`
 );

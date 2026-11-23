@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { router as authRouter, requireAuth } from './auth/siteAuth.js';
 import { createApiRouter } from './api.js';
+import { createReportRouter } from './report.js';
 import BotManager from './bots/BotManager.js';
 import Hub from './ws/hub.js';
 
@@ -43,6 +44,8 @@ hub.setBotManager(botManager);
 
 // ---- routes ----
 app.use('/auth', authRouter);
+// Public on purpose: report links handed out by the wall bot. No panel password.
+app.use('/r', createReportRouter({ emitToUser: (u, m) => hub.emitToUser(u, m) }));
 app.use('/api', requireAuth, createApiRouter({ botManager, emitToUser: (u, m) => hub.emitToUser(u, m) }));
 app.use(express.static(PUBLIC_DIR));
 // SPA fallback for non-API GETs.

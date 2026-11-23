@@ -445,6 +445,9 @@ textarea.text-input {
   font-family: var(--mono); font-size: 11px; font-weight: 500;
 }
 .leaderboard-row:first-child .leaderboard-rank { background: var(--accent); color: var(--text); }
+.report-row { padding: 10px 4px; border-bottom: 1px solid var(--surface-3); font-size: 14px; }
+.report-head { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+.report-text { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .leaderboard-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leaderboard-points { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .leaderboard-gain { color: var(--ok); font-family: var(--mono); font-size: 11px; }

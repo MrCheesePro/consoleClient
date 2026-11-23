@@ -25,7 +25,7 @@ There is no build step or bundler — `public/` is served as static files.
 ```
 server/
   index.js          Express + session + HTTP server; upgrades WS on the session cookie
-  api.js            REST: /api/accounts, /api/settings (mounted behind requireAuth)
+  api.js            REST: /api/accounts, /api/settings, /api/wall/*, /api/reports (behind requireAuth)
   auth/
     siteAuth.js     Panel unlock (shared APP_PASSWORD) + requireAuth middleware
     mcAuth.js       Microsoft device-code flow (prismarine-auth), warms token cache
@@ -33,6 +33,7 @@ server/
     BotManager.js   Owns all live bots, keyed `${userId}:${accountId}`; fans events to WS
     BotSession.js   One mineflayer bot: connect, reconnect, AFK behaviors, inventory
     WallBot.js      Wall-check reminders, chat triggers, player verification, raid alerts
+  report.js         Public /r/:token report form → reports table + report Discord webhook
   db/db.js          better-sqlite3: schema (users/accounts/settings) + prepared queries
   ws/hub.js         WebSocket registry per user; routes inbound control msgs to BotManager
 public/
@@ -161,6 +162,13 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   the outbound queue). `wall_reminder_message` is a template run through `fillPlaceholders`
   (`{minutes}`, `{total}`, `{player}`); unknown placeholders are left as-is. Nothing is appended
   to the template — if you add a detail, add a placeholder rather than concatenating onto it.
+- **Reports**: whispering `report` gets a one-time `PUBLIC_URL/r/<token>` link (30 min, 3 per
+  player per hour). `/r` is mounted **outside** `requireAuth` on purpose. A submission is saved to the
+  `reports` table first (its `id` is the ticket number, sender included) and streamed to the panel as
+  `reportFiled`; the Discord post carries the ticket number but **never the sender** — keep that split.
+  The panel lists them via `GET /api/reports`. `report_discord_webhook` **does not fall back** to the
+  wall webhook (unlike every other channel): blank means reports are off, because a complaint in the
+  faction-wide channel is worse than none. Posts set `allowed_mentions: { parse: [] }`.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.
@@ -179,7 +187,8 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 `PORT` (3000) · `APP_PASSWORD` (`turtlegang` — change it) · `SESSION_SECRET` (random per
 boot; set a stable value in prod) · `DB_PATH` (`data/app.db`) · `TOKENS_DIR`
 (`data/tokens`) · `WALL_BACKUPS_DIR` (`data/wall-backups`) · `MAX_BOTS_PER_USER` (20) ·
-`NODE_ENV` (`production` enables secure cookies).
+`NODE_ENV` (`production` enables secure cookies) · `PUBLIC_URL` (base for report links; blank
+disables `report`).
 
 ## Gotchas
 

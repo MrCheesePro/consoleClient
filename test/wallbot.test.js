@@ -1647,3 +1647,64 @@ test('the panel can set the outpost state, and chat keeps driving it after', () 
     assert.equal(state.raidOutpostState, 'IDLE', 'unknown keys are ignored');
   } finally { wb.stopAll(); }
 });
+
+// ---- anonymous reports ----
+
+test('report: one-time link files a numbered ticket; panel gets the sender, Discord does not', async () => {
+  const { createReportRouter } = await import('../server/report.js');
+  const express = (await import('express')).default;
+  process.env.PUBLIC_URL = 'https://report.example.com/';
+  const { wb, session } = harness({ wall_require_verified: 0, report_discord_webhook: 'https://discord.test/hook' });
+  const consoleLines = [];
+  wb.emitToUser = (_u, m) => { if (m.type === 'consoleLine') consoleLines.push(m.text); };
+
+  wb.handleChat(USER, session, 'Snitch: report');
+  const whisper = consoleLines.find((l) => l.includes('/r/'));
+  assert.ok(whisper, 'link whispered');
+  const token = /\/r\/([A-Za-z0-9_-]+)/.exec(whisper)[1];
+  assert.match(whisper, /\(to snitch\) .*https:\/\/report\.example\.com\/r\//);
+
+  const posts = [];
+  const emitted = [];
+  const app = express().use('/r', createReportRouter({
+    post: async (hook, body) => posts.push({ hook, body }),
+    emitToUser: (u, m) => emitted.push(m),
+  }));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}/r/${token}`;
+  // Read every body and close the socket each time, so no keep-alive handle outlives the test.
+  const hit = async (url, opts = {}) => {
+    const res = await fetch(url, { ...opts, keepalive: false, headers: { connection: 'close' } });
+    await res.text();
+    return res.status;
+  };
+  try {
+    assert.equal(await hit(base), 200);
+    const form = () => ({ method: 'POST', body: new URLSearchParams({ text: 'they took the loot', about: 'bob' }) });
+    assert.equal(await hit(base, form()), 200);
+    const [saved] = db.listReports.all(USER);
+    assert.equal(saved.player, 'snitch');
+    assert.equal(saved.text, 'they took the loot');
+    assert.deepEqual(posts, [{ hook: 'https://discord.test/hook', body: { id: saved.id, text: 'they took the loot', about: 'bob' } }]);
+    assert.ok(!JSON.stringify(posts).toLowerCase().includes('snitch'), 'Discord never sees the sender');
+    assert.equal(emitted[0].type, 'reportFiled');
+    assert.equal(emitted[0].report.player, 'snitch');
+    // Single use.
+    assert.equal(await hit(base, form()), 410);
+    assert.equal(await hit(`${base.slice(0, -3)}zzz`), 410);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
+
+  try {
+  // Rate limit: 3 per hour, then refused.
+  wb.handleChat(USER, session, 'Snitch: report');
+  wb.handleChat(USER, session, 'Snitch: report');
+  const before = consoleLines.filter((l) => l.includes('/r/')).length;
+  wb.handleChat(USER, session, 'Snitch: report');
+  assert.equal(consoleLines.filter((l) => l.includes('/r/')).length, before);
+  assert.ok(consoleLines.some((l) => l.includes('Too many report links')));
+  } finally { wb.stopAll(); delete process.env.PUBLIC_URL; }
+});

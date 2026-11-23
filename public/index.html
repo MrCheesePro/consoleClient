@@ -500,6 +500,10 @@
                         <label class="field-label">Raid Outpost claimed/lost webhook</label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
                       </div>
+                      <div class="field span-full">
+                        <label class="field-label">Anonymous reports webhook <span class="label-sub">Private staff channel. Blank turns reports off; never falls back.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="report_discord_webhook" />
+                      </div>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -548,6 +552,12 @@
                         <button id="roster-add" class="icon-btn" title="Add authorized player" aria-label="Add authorized player">＋</button>
                       </div>
                       <div id="roster-list" class="data-list"></div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Reports <span id="reports-count" class="card-meta">0</span></h4><p>Players message the bot <code>report</code> for a one-time form link. Discord gets the ticket without the sender; only this list shows who sent it.</p></div>
+                    <div class="ledger-fields">
+                      <div id="reports-list" class="data-list"></div>
                     </div>
                   </div>
                   <div class="ledger-row">
