@@ -92,6 +92,18 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   forcing the console on. `BotManager` wires it when it constructs each session.
 - Wall-bot player names are stored **lowercased** in `wall_stats` / `wall_players`
   (`normalizePlayer` in `WallBot.js`); compare lowercased or one player splits across two rows.
+  But `_whisper` must reply with the name **as the server spelled it** (`state.displayNames`):
+  the network's `/msg` matches case-sensitively, echoes `[me -> name]`, and silently drops a
+  lowercased target.
+- **Identity is the UUID**, `player` is just the last name seen. On every DM `handleChat` resolves
+  the sender's UUID (tab list, else Mojang API, cached 24h) and `linkPlayerUuid` (`db.js`) renames
+  their `wall_stats`/`wall_players` rows to the current name, parking anyone else's row on that
+  name as `~<uuid>`. Rows with `uuid = ''` (panel adds, pre-UUID data) are adopted on first DM.
+  Skipped entirely when the bot's own UUID isn't v4 (offline-mode server: names are identity).
+- `wall_board_sort` (`total`|`walls`|`raid`) orders the **Post to Discord** check board
+  (`postCheckBoard`, WS `wallBoardPost`). Discord-only, monospace table, top 25. Webhook:
+  `check_board_discord_webhook` whenever non-empty (no toggle), else the check log one when
+  `check_to_discord` is on, else the wall webhook.
 - `wall_chat_pattern` selects how chat is parsed: the names `dm` (default when blank) and `chat`
   resolve to `DM_CHAT_PATTERN` / `PUBLIC_CHAT_PATTERN` in `WallBot.js`, anything else is used as a
   regex. Group 1 must capture the player, group 2 the message. DM mode is the default so a trigger

@@ -12,7 +12,7 @@ const db = await import('../server/db/db.js');
 const {
   default: WallBot, parseChatLine, compileTriggers, isQuietHours, normalizePlayer,
   fillPlaceholders, formatDuration, formatClock,
-  RAID_OUTPOST_CLAIMED_RE, RAID_OUTPOST_LOST_RE,
+  RAID_OUTPOST_CLAIMED_RE, RAID_OUTPOST_LOST_RE, formatCheckBoard, cleanUuid,
 } = await import('../server/bots/WallBot.js');
 
 const USER = 'local';
@@ -1758,4 +1758,53 @@ test('report embed: named shows the sender, anonymous never does; kind sets colo
   assert.equal(anon.author.name, 'Anonymous shout-out');
   assert.equal(anon.color, 0x2ECC71);
   assert.equal(anon.thumbnail, undefined, 'no head for a non-username');
+});
+
+// ---- UUID identity + check board ----
+
+test('linkPlayerUuid: a renamed player keeps their row; the name\'s old owner is parked', () => {
+  clearWallTables();
+  const A = 'a'.repeat(32), B = 'b'.repeat(32);
+  db.incWallCheck.run({ user_id: USER, player: 'oldname', uuid: A, last_check: 1 });
+  db.upsertWallPlayer.run({ user_id: USER, player: 'oldname', uuid: A, verified: 1, label: '', added_at: 1 });
+  db.incWallCheck.run({ user_id: USER, player: 'newname', uuid: B, last_check: 1 }); // previous owner of the name
+
+  assert.deepEqual(db.linkPlayerUuid(USER, A, 'newname'), ['oldname']);
+  const stats = db.allWallCheckers.all(USER).map((r) => r.player).sort();
+  assert.deepEqual(stats, ['newname', `~${B}`]);
+  assert.deepEqual(db.listWallPlayers.all(USER).map((r) => r.player), ['newname']);
+
+  // An untagged pre-UUID row is adopted rather than parked.
+  db.incWallCheck.run({ user_id: USER, player: 'legacy', last_check: 1 });
+  db.linkPlayerUuid(USER, 'c'.repeat(32), 'legacy');
+  db.incWallCheck.run({ user_id: USER, player: 'legacy', last_check: 2 });
+  assert.equal(db.allWallCheckers.all(USER).find((r) => r.player === 'legacy').checks, 2);
+});
+
+test('formatCheckBoard sorts by the chosen column', () => {
+  const rows = [
+    { player: 'walls', checks: 9, raid_checks: 0 },
+    { player: 'raider', checks: 1, raid_checks: 5 },
+    { player: 'both', checks: 5, raid_checks: 5 },
+  ];
+  const order = (sort) => formatCheckBoard(rows, sort).split('\n').slice(2, 5).map((l) => l.trim().split(/\s+/)[1]);
+  assert.deepEqual(order('walls'), ['walls', 'both', 'raider']);
+  assert.deepEqual(order('raid'), ['both', 'raider', 'walls']);
+  assert.deepEqual(order('total'), ['both', 'walls', 'raider']);
+  assert.match(formatCheckBoard(rows, 'total'), /Walls\s+Raid\s+Total/);
+  assert.equal(formatCheckBoard([]), 'No checks recorded yet.');
+});
+
+test('on an online-mode server a check after a name change lands on the old row', () => {
+  clearWallTables();
+  const { wb, session } = harness({ wall_require_verified: 0, wall_chat_pattern: 'chat' });
+  const uuid = '069a79f4-44e9-4726-a5be-fca90e38aaf5';
+  session.bot.player = { uuid: '11111111-2222-4333-8444-555555555555' };
+  session.bot.players = { Notch: { username: 'Notch', uuid } };
+  try {
+    db.incWallCheck.run({ user_id: USER, player: 'oldnotch', uuid: cleanUuid(uuid), last_check: 1 });
+    wb.handleChat(USER, session, 'Notch: check');
+    const rows = db.allWallCheckers.all(USER);
+    assert.deepEqual(rows.map((r) => [r.player, r.checks]), [['notch', 2]]);
+  } finally { wb.stopAll(); }
 });

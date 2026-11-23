@@ -116,12 +116,14 @@ db.exec(`
     raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}',
     raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}',
     raid_outpost_discord_webhook TEXT NOT NULL DEFAULT '',
+    check_board_discord_webhook TEXT NOT NULL DEFAULT '',
     report_discord_webhook TEXT NOT NULL DEFAULT '',
     reports_enabled       INTEGER NOT NULL DEFAULT 1,
     reports_verified_only INTEGER NOT NULL DEFAULT 1,
     discord_ping_role     TEXT    NOT NULL DEFAULT '',
     ping_weewoo           INTEGER NOT NULL DEFAULT 1,
-    ping_raid_outpost     INTEGER NOT NULL DEFAULT 1
+    ping_raid_outpost     INTEGER NOT NULL DEFAULT 1,
+    wall_board_sort       TEXT    NOT NULL DEFAULT 'total'
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -225,9 +227,11 @@ db.exec(`
   addColumn('raid_outpost_trigger', `raid_outpost_trigger TEXT NOT NULL DEFAULT 'raid'`);
   addColumn('raid_outpost_reminder_message', `raid_outpost_reminder_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_REMINDER_DEFAULT}'`);
   addColumn('raid_outpost_discord_webhook', `raid_outpost_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('check_board_discord_webhook', `check_board_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('discord_ping_role', `discord_ping_role TEXT NOT NULL DEFAULT ''`);
   addColumn('ping_weewoo', `ping_weewoo INTEGER NOT NULL DEFAULT 1`);
   addColumn('ping_raid_outpost', `ping_raid_outpost INTEGER NOT NULL DEFAULT 1`);
+  addColumn('wall_board_sort', `wall_board_sort TEXT NOT NULL DEFAULT 'total'`);
   addColumn('report_discord_webhook', `report_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('reports_enabled', `reports_enabled INTEGER NOT NULL DEFAULT 1`);
   addColumn('reports_verified_only', `reports_verified_only INTEGER NOT NULL DEFAULT 1`);
@@ -254,6 +258,13 @@ db.exec(`
   if (!cols.has('last_raid_check')) {
     db.exec(`ALTER TABLE wall_stats ADD COLUMN last_raid_check INTEGER NOT NULL DEFAULT 0`);
   }
+}
+
+// Mojang UUID (32 hex, no dashes) behind each name, so a player who changes IGN keeps their row.
+// '' = not seen since this column existed; the first DM fills it in (linkPlayerUuid).
+for (const table of ['wall_stats', 'wall_players']) {
+  const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  if (!cols.has('uuid')) db.exec(`ALTER TABLE ${table} ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`);
 }
 
 // Changing a column DEFAULT does not touch rows that already exist, so an install created before
@@ -351,7 +362,8 @@ const SETTINGS_FIELDS = [
   'grace_period', 'raid_outpost_faction', 'raid_outpost_trigger',
   'raid_outpost_reminder_message', 'raid_outpost_combined_message',
   'raid_outpost_discord_webhook', 'report_discord_webhook', 'reports_enabled', 'reports_verified_only',
-  'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost',
+  'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost', 'wall_board_sort',
+  'check_board_discord_webhook',
 ];
 
 export function updateSettings(userId, patch) {
@@ -372,6 +384,8 @@ export const upsertLeaderboard = db.prepare(`
 `);
 
 // ---- Wall bot ----
+// uuid is optional on these writes: '' when the caller doesn't know it (panel adds, tests).
+const withUuid = (stmt) => ({ run: (params) => stmt.run({ uuid: '', ...params }) });
 // Every `player` argument here is expected to be lowercased by the caller (see normalizePlayer
 // in WallBot.js) so that casing can never split one player across two rows.
 
@@ -386,19 +400,21 @@ export const upsertWallState = db.prepare(`
     raid_outpost_claimed_at = @raid_outpost_claimed_at, last_raid_check_at = @last_raid_check_at
 `);
 
-export const incWallCheck = db.prepare(`
-  INSERT INTO wall_stats (user_id, player, checks, last_check)
-  VALUES (@user_id, @player, 1, @last_check)
-  ON CONFLICT(user_id, player) DO UPDATE SET checks = checks + 1, last_check = @last_check
-`);
+export const incWallCheck = withUuid(db.prepare(`
+  INSERT INTO wall_stats (user_id, player, uuid, checks, last_check)
+  VALUES (@user_id, @player, @uuid, 1, @last_check)
+  ON CONFLICT(user_id, player) DO UPDATE SET checks = checks + 1, last_check = @last_check,
+    uuid = CASE WHEN uuid = '' THEN @uuid ELSE uuid END
+`));
 
 // A Raid Outpost check. It stamps its own column and leaves last_check alone, so lastWallChecker
 // keeps meaning "who last checked walls".
-export const incRaidCheck = db.prepare(`
-  INSERT INTO wall_stats (user_id, player, raid_checks, last_raid_check)
-  VALUES (@user_id, @player, 1, @last_check)
-  ON CONFLICT(user_id, player) DO UPDATE SET raid_checks = raid_checks + 1, last_raid_check = @last_check
-`);
+export const incRaidCheck = withUuid(db.prepare(`
+  INSERT INTO wall_stats (user_id, player, uuid, raid_checks, last_raid_check)
+  VALUES (@user_id, @player, @uuid, 1, @last_check)
+  ON CONFLICT(user_id, player) DO UPDATE SET raid_checks = raid_checks + 1, last_raid_check = @last_check,
+    uuid = CASE WHEN uuid = '' THEN @uuid ELSE uuid END
+`));
 
 export const topWallCheckers = db.prepare(
   `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
@@ -426,11 +442,12 @@ export const listWallPlayers = db.prepare(
 export const getWallPlayer = db.prepare(
   `SELECT * FROM wall_players WHERE user_id = ? AND player = ?`
 );
-export const upsertWallPlayer = db.prepare(`
-  INSERT INTO wall_players (user_id, player, verified, label, added_at)
-  VALUES (@user_id, @player, @verified, @label, @added_at)
-  ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label
-`);
+export const upsertWallPlayer = withUuid(db.prepare(`
+  INSERT INTO wall_players (user_id, player, uuid, verified, label, added_at)
+  VALUES (@user_id, @player, @uuid, @verified, @label, @added_at)
+  ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label,
+    uuid = CASE WHEN uuid = '' THEN @uuid ELSE uuid END
+`));
 export const insertReport = db.prepare(
   `INSERT INTO reports (user_id, player, about, text, anonymous, kind, created_at)
    VALUES (@user_id, @player, @about, @text, @anonymous, @kind, @created_at)`
@@ -441,6 +458,36 @@ export const listReports = db.prepare(
 export const deleteWallPlayer = db.prepare(
   `DELETE FROM wall_players WHERE user_id = ? AND player = ?`
 );
+
+// Identity is the UUID; `player` is just the name we last saw it under. Called on every DM, so a
+// renamed player's stats and roster entry follow them to the new name. A row already sitting on
+// the new name that belongs to someone else (the name's previous owner, or an untagged legacy row
+// when we already have a tagged one) is parked under `~<uuid or old name>` so it can't absorb
+// this player's checks; its owner gets it back the next time they message the bot.
+const _linkStmts = Object.fromEntries(['wall_stats', 'wall_players'].map((t) => [t, {
+  byUuid: db.prepare(`SELECT player FROM ${t} WHERE user_id = ? AND uuid = ?`),
+  byName: db.prepare(`SELECT uuid FROM ${t} WHERE user_id = ? AND player = ?`),
+  adopt: db.prepare(`UPDATE ${t} SET uuid = ? WHERE user_id = ? AND player = ?`),
+  rename: db.prepare(`UPDATE ${t} SET player = ? WHERE user_id = ? AND player = ?`),
+}]));
+export const linkPlayerUuid = db.transaction((userId, uuid, player) => {
+  const renamed = [];
+  for (const [table, q] of Object.entries(_linkStmts)) {
+    const mine = q.byUuid.get(userId, uuid);
+    if (mine?.player === player) continue;
+    const other = q.byName.get(userId, player);
+    if (other && !other.uuid && !mine) {
+      q.adopt.run(uuid, userId, player); // pre-UUID row under this name: it's ours now
+      continue;
+    }
+    if (other) q.rename.run(`~${other.uuid || player}`, userId, player);
+    if (mine) {
+      q.rename.run(player, userId, mine.player);
+      if (table === 'wall_players') renamed.push(mine.player);
+    }
+  }
+  return renamed; // old roster names, for the console
+});
 
 // Clear the scoreboard for one user in a single atomic step. Deliberately leaves wall_players
 // alone: a map reset wipes scores, not who is authorized to log a check.

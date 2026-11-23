@@ -535,6 +535,8 @@ document.querySelector('[data-outpost-chips]').onclick = (e) => {
 
 // The browser sandbox won't let us fetch-and-save, so hand the URL to the browser directly.
 $('wall-export').onclick = () => { location.href = '/api/wall/export'; };
+// Sort rides along with the click, so a just-changed dropdown wins even before its save lands.
+$('wall-board-post').onclick = () => wsSend({ type: 'wallBoardPost', sort: $('set-wall_board_sort').value });
 
 // Reset is destructive, so it takes two clicks. No window.confirm — a native modal blocks the
 // whole page, which is the last thing you want when driving the panel remotely.

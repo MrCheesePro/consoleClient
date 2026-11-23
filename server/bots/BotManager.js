@@ -335,6 +335,7 @@ export default class BotManager {
   wallSnapshot(userId) { return this.wallBot.snapshot(userId); }
   wallBroadcast(userId) { this.wallBot.broadcast(userId); }
   wallReload(userId) { this.wallBot.reload(userId); }
+  postCheckBoard(userId, sort) { this.wallBot.postCheckBoard(userId, sort); }
 
   // When the leaderboard bot itself comes online, do one delayed refresh (debounced per user) so
   // the board populates soon after connecting instead of waiting for the next hourly tick. Any

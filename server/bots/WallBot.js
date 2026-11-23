@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
-  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker, lastRaidChecker,
+  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker, lastRaidChecker, linkPlayerUuid,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
   RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
@@ -34,6 +34,9 @@ const CODE_TTL_MS = 15 * 60 * 1000;    // how long an issued verification code s
 const REPORT_MAX_PER_HOUR = 3;         // report links one player can request per hour
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
+
+const UUID_CACHE_MS = 24 * 60 * 60 * 1000; // how long a name -> UUID answer from Mojang is trusted
+const UUID_LOOKUP_TIMEOUT_MS = 3000;
 
 const RAID_OUTPOST_CHECK_DEFAULT = 'Raid Outpost checked by {player} [{checks}]';
 
@@ -71,6 +74,50 @@ const NAMED_PATTERNS = {
 /** Minecraft names are case-preserving but not case-sensitive — key everything off this. */
 export function normalizePlayer(name) {
   return String(name ?? '').trim().toLowerCase();
+}
+
+/** 32 lowercase hex, no dashes — the one shape every UUID is stored in. */
+export function cleanUuid(uuid) {
+  return String(uuid ?? '').replace(/-/g, '').toLowerCase();
+}
+
+/**
+ * Wall check board for Discord: a monospace table, because inline embed fields collapse into one
+ * column on mobile. `sort` is walls | raid | total; ties fall back to name so the order is stable.
+ */
+export const BOARD_SORTS = {
+  total: { label: 'total checks', key: (r) => r.checks + r.raid_checks },
+  walls: { label: 'wall checks', key: (r) => r.checks },
+  raid: { label: 'raid checks', key: (r) => r.raid_checks },
+};
+export function formatCheckBoard(rows, sort = 'total', limit = 25) {
+  if (!rows.length) return 'No checks recorded yet.';
+  const { key } = BOARD_SORTS[sort] || BOARD_SORTS.total;
+  const top = [...rows].sort((a, b) => key(b) - key(a) || a.player.localeCompare(b.player)).slice(0, limit);
+  const w = Math.max(6, ...top.map((r) => r.player.length));
+  const n = (v) => String(v).padStart(5);
+  const lines = [`  #  ${'Player'.padEnd(w)}  ${n('Walls')}  ${n('Raid')}  ${n('Total')}`];
+  top.forEach((r, i) => {
+    lines.push(`${String(i + 1).padStart(3)}  ${r.player.padEnd(w)}  ${n(r.checks)}  ${n(r.raid_checks)}  ${n(r.checks + r.raid_checks)}`);
+  });
+  return '```\n' + lines.join('\n') + '\n```';
+}
+
+// name (lowercased) -> { uuid, at }. Misses are cached too ('' = Mojang has no such name, e.g. a
+// nickname), so one player can't make us hit the API on every message.
+const uuidCache = new Map();
+
+async function fetchMojangUuid(name) {
+  let uuid = '';
+  try {
+    const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(name)}`,
+      { signal: AbortSignal.timeout(UUID_LOOKUP_TIMEOUT_MS) });
+    if (res.ok) uuid = cleanUuid((await res.json()).id);
+  } catch {
+    return ''; // network trouble: don't cache, try again next message
+  }
+  uuidCache.set(normalizePlayer(name), { uuid, at: Date.now() });
+  return uuid;
 }
 
 /** Drop legacy section-sign color codes so they can't break the chat pattern. */
@@ -262,6 +309,8 @@ export default class WallBot {
       cooldowns: new Map(),      // `${kind}:${player}` -> ts of last counted check
       notices: new Map(),        // player -> ts of last "please verify" reply
       verifyAttempts: new Map(), // player -> [ts, ...] of wrong password/code guesses this hour
+      displayNames: new Map(),   // lowercased player -> name as the server spelled it
+      uuids: new Map(),          // lowercased player -> UUID linked this session
       pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
       reportRequests: new Map(), // player -> [ts, ...] of report links issued this hour
       queue: [],                 // pending outbound messages
@@ -373,7 +422,50 @@ export default class WallBot {
     const message = parsed.message;
     if (!player || !message) return;
     if (this._isSelf(userId, session, player, message)) return;
+    // Stats key off the lowercased name, but some network /msg plugins match the target
+    // case-sensitively: they echo `[me -> name]` and then deliver nothing. Reply as spelled.
+    const spelled = parsed.player.trim();
+    this._stateFor(userId).displayNames.set(player, spelled);
 
+    // Tie the name to its UUID before anything counts, so a renamed player's checks land on
+    // their existing row. Tab list first (free); Mojang only for someone on another server.
+    if (this._isOnlineMode(session)) {
+      const tab = Object.values(session.bot.players || {}).find((p) => normalizePlayer(p.username) === player);
+      const cached = uuidCache.get(player);
+      const known = tab?.uuid ? cleanUuid(tab.uuid)
+        : cached && Date.now() - cached.at < UUID_CACHE_MS ? cached.uuid : null;
+      if (known === null) {
+        fetchMojangUuid(spelled).then((uuid) => {
+          if (uuid) this._linkUuid(userId, player, uuid);
+          this._dispatchChat(userId, getSettings.get(userId), player, message);
+        });
+        return;
+      }
+      if (known) this._linkUuid(userId, player, known);
+    }
+    this._dispatchChat(userId, settings, player, message);
+  }
+
+  // Offline-mode servers hand out name-derived v3 UUIDs; names are the identity there anyway, and
+  // mixing those with Mojang's v4 ids would split players. So UUID tracking needs a v4 bot.
+  _isOnlineMode(session) {
+    const own = cleanUuid(session?.bot?.player?.uuid);
+    return own.length === 32 && own[12] === '4';
+  }
+
+  _linkUuid(userId, player, uuid) {
+    const state = this._stateFor(userId);
+    if (state.uuids.get(player) === uuid) return;
+    state.uuids.set(player, uuid);
+    const renamed = linkPlayerUuid(userId, uuid, player);
+    if (renamed.length) {
+      this._console(userId, `${renamed[0]} changed their name to ${player}; their checks moved with them.`);
+      this.broadcast(userId);
+    }
+  }
+
+  _dispatchChat(userId, settings, player, message) {
+    if (!settings?.wall_enabled) return;
     if (this._handleVerify(userId, settings, player, message)) return;
     if (this._handleReport(userId, settings, player, message)) return;
     if (this._handleRaidTriggers(userId, settings, player, message)) return;
@@ -446,7 +538,7 @@ export default class WallBot {
       state.pendingCodes.delete(player);
       state.verifyAttempts.delete(player);
       upsertWallPlayer.run({
-        user_id: userId, player, verified: 1, label: '', added_at: now,
+        user_id: userId, player, uuid: state.uuids.get(player) || '', verified: 1, label: '', added_at: now,
       });
       this._whisper(userId, player, 'Verified — your wall checks will now be counted.');
       this._console(userId, `${player} verified.`);
@@ -658,7 +750,8 @@ export default class WallBot {
     const now = Date.now();
     const raid = kind === 'raid';
 
-    (raid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, last_check: now });
+    const uuid = state.uuids.get(player) || '';
+    (raid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, uuid, last_check: now });
     state.cooldowns.set(`${kind}:${player}`, now);
     state.totalChecks += 1;
     const prev = raid ? state.lastRaidCheckAt : state.lastCheckAt;
@@ -927,6 +1020,33 @@ export default class WallBot {
   }
 
   /**
+   * Post the wall check board (walls / raid / total per player) to Discord, on demand from the
+   * panel. Discord-only, like postLeaderboard. The button is the opt-in, so no toggle gates it:
+   * its own webhook when filled in, else the check log one when that's on, else the wall one.
+   */
+  postCheckBoard(userId, sort) {
+    const settings = getSettings.get(userId);
+    const useCheck = settings?.check_to_discord && settings.check_discord_webhook;
+    const webhook = settings?.check_board_discord_webhook
+      || (useCheck ? settings.check_discord_webhook : settings?.wall_discord_webhook);
+    if (!webhook) {
+      this._error(userId, 'Check board: set a Discord webhook for it (Settings › Other channels) first.');
+      return;
+    }
+    const by = BOARD_SORTS[sort] ? sort : (BOARD_SORTS[settings.wall_board_sort] ? settings.wall_board_sort : 'total');
+    const state = this._stateFor(userId);
+    const rows = allWallCheckers.all(userId)
+      .map((r) => ({ ...r, player: state.displayNames.get(r.player) || r.player }));
+    this._postDiscord(userId, webhook, '', {
+      color: COLOR_LOG,
+      title: 'Wall Checks',
+      description: formatCheckBoard(rows, by),
+      footer: { text: `sorted by ${BOARD_SORTS[by].label} · ${state.totalChecks} checks all-time` },
+    });
+    this._console(userId, `Posted the check board to Discord (by ${BOARD_SORTS[by].label}).`);
+  }
+
+  /**
    * Post a parsed factions board to Discord. Discord-only by design: the whole point of the
    * hourly refresh is that nobody has to read the board in chat, so echoing ten lines back into
    * Minecraft would be the opposite of useful (and a fast route to a spam mute).
@@ -964,7 +1084,8 @@ export default class WallBot {
     // Servers differ on the whisper command (/msg, /w, /tell, /pm). Verification codes are
     // delivered this way, so getting it wrong silently breaks verification.
     const cmd = String(settings.wall_msg_command || '/msg').trim();
-    this._enqueue(userId, `${cmd} ${player} ${text}`, text);
+    const name = this._stateFor(userId).displayNames.get(normalizePlayer(player)) || player;
+    this._enqueue(userId, `${cmd} ${name} ${text}`, text);
   }
 
   // Space outbound chat out. Bursting is what trips server anti-spam and gets the account muted.

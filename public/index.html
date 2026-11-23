@@ -223,9 +223,18 @@
                     </div>
                   </div>
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Records</h4><p>Download the counts, or start a new map.</p></div>
+                    <div class="ledger-meta"><h4>Records</h4><p>Post the counts to Discord, download them, or start a new map.</p></div>
                     <div class="ledger-fields">
+                      <div class="field">
+                        <label class="field-label" for="set-wall_board_sort">Discord board order</label>
+                        <select id="set-wall_board_sort" class="select-input" data-setting="wall_board_sort">
+                          <option value="total">Most total checks</option>
+                          <option value="walls">Most wall checks</option>
+                          <option value="raid">Most raid checks</option>
+                        </select>
+                      </div>
                       <div class="wall-actions">
+                        <button id="wall-board-post" class="btn btn-pill">Post to Discord</button>
                         <button id="wall-export" class="btn btn-pill">Export JSON</button>
                         <button id="wall-reset" class="btn btn-pill btn-danger">Reset stats</button>
                       </div>
@@ -508,6 +517,10 @@
                       <div class="field span-full">
                         <label class="field-label">Raid Outpost claimed/lost webhook</label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Check board webhook (Post to Discord)</label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_board_discord_webhook" />
                       </div>
                     </div>
                   </div>
