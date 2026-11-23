@@ -1684,6 +1684,8 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
   };
   try {
     assert.equal(await hit(base), 200);
+    assert.match(token, /^[a-z0-9]{16}$/, 'lowercase token survives chat case mangling');
+    assert.equal(await hit(base.replace(token, token.toUpperCase())), 200, 'case-insensitive');
     const form = () => ({ method: 'POST', body: new URLSearchParams({ text: 'they took the loot', about: 'bob' }) });
     assert.equal(await hit(base, form()), 200);
     const [saved] = db.listReports.all(USER);

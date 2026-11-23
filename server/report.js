@@ -8,24 +8,35 @@ import { getSettings, insertReport } from './db/db.js';
 
 export const REPORT_TTL_MS = 30 * 60 * 1000;
 export const REPORT_MAX_LEN = 2000;
-const TOKEN_RE = /^[A-Za-z0-9_-]{16}$/;
+// Lowercase letters and digits only: chat plugins (anti-caps, anti-advertising) and people typing
+// the link by hand mangle case and punctuation, and a mangled token reads as an expired link.
+const TOKEN_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const TOKEN_LEN = 16; // ~82 bits
+const TOKEN_RE = /^[a-z0-9]{16}$/;
 
 // ponytail: in-memory, so a restart kills outstanding links; persist if that ever matters.
 const tokens = new Map(); // token -> { userId, player, expiresAt }
 
 export function issueReportToken(userId, player, now = Date.now()) {
   for (const [t, v] of tokens) if (v.expiresAt <= now) tokens.delete(t);
-  // 12 bytes (96 bits, 16 chars): plenty for a 30-minute single-use link, and short enough that
+  // 16 chars: plenty for a 30-minute single-use link, and short enough that
   // `/msg <16-char name> Report: <url>` stays under Minecraft's 100-character chat limit.
-  const token = crypto.randomBytes(12).toString('base64url');
+  let token = '';
+  for (let i = 0; i < TOKEN_LEN; i++) token += TOKEN_ALPHABET[crypto.randomInt(TOKEN_ALPHABET.length)];
   tokens.set(token, { userId, player, expiresAt: now + REPORT_TTL_MS });
   return token;
 }
 
+// Every refusal logs its reason (to journald on the VPS), since the player only ever sees
+// "expired or already used": malformed = the link was altered in chat; unknown = never issued
+// by this process (restarted since, or another copy of the panel sent it) or already used.
 function live(token, now = Date.now()) {
-  if (!TOKEN_RE.test(token)) return null;
-  const entry = tokens.get(token);
-  if (!entry || entry.expiresAt <= now) return null;
+  let why = null;
+  const entry = TOKEN_RE.test(token) ? tokens.get(token) : null;
+  if (!TOKEN_RE.test(token)) why = 'malformed';
+  else if (!entry) why = 'unknown or already used';
+  else if (entry.expiresAt <= now) why = 'expired';
+  if (why) { console.warn(`[report] link refused (${why}): /r/${String(token).slice(0, 40)}`); return null; }
   return entry;
 }
 
@@ -66,6 +77,8 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
   const router = express.Router();
   router.use(express.urlencoded({ extended: false, limit: '16kb' }));
   router.use((req, res, next) => { res.set('Referrer-Policy', 'no-referrer'); next(); });
+
+  router.param('token', (req, _res, next, t) => { req.params.token = String(t).toLowerCase(); next(); });
 
   router.get('/:token', (req, res) => {
     if (!live(req.params.token)) return res.status(410).send(deadPage());
