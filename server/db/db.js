@@ -170,6 +170,7 @@ db.exec(`
     about      TEXT    NOT NULL DEFAULT '',
     text       TEXT    NOT NULL,
     anonymous  INTEGER NOT NULL DEFAULT 1,
+    kind       TEXT    NOT NULL DEFAULT 'report',
     created_at INTEGER NOT NULL
   );
 `);
@@ -178,6 +179,8 @@ db.exec(`
 {
   const cols = new Set(db.prepare(`PRAGMA table_info(reports)`).all().map((c) => c.name));
   if (!cols.has('anonymous')) db.exec(`ALTER TABLE reports ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 1`);
+  // 'report' (something bad) or 'praise' (a good message). Same ticket numbering for both.
+  if (!cols.has('kind')) db.exec(`ALTER TABLE reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'`);
 }
 
 // ---- Lightweight migrations. CREATE TABLE IF NOT EXISTS won't add new columns to an
@@ -429,11 +432,11 @@ export const upsertWallPlayer = db.prepare(`
   ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label
 `);
 export const insertReport = db.prepare(
-  `INSERT INTO reports (user_id, player, about, text, anonymous, created_at)
-   VALUES (@user_id, @player, @about, @text, @anonymous, @created_at)`
+  `INSERT INTO reports (user_id, player, about, text, anonymous, kind, created_at)
+   VALUES (@user_id, @player, @about, @text, @anonymous, @kind, @created_at)`
 );
 export const listReports = db.prepare(
-  `SELECT id, player, about, text, anonymous, created_at FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 200`
+  `SELECT id, player, about, text, anonymous, kind, created_at FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 200`
 );
 export const deleteWallPlayer = db.prepare(
   `DELETE FROM wall_players WHERE user_id = ? AND player = ?`

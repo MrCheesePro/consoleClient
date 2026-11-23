@@ -82,7 +82,7 @@ function pingLine(toggleKey) {
   return m ? '@Role' : null;
 }
 
-function embed({ name, when, channel, color, author, authorIcon = true, thumb, title, description, fields, footer, chat, ping }) {
+function embed({ name, when, channel, color, author, title, description, fields, footer, noFooter, chat, ping }) {
   const wrap = el('figure', 'dp-item');
   const where = destination(channel);
   const cap = el('figcaption', 'dp-caption');
@@ -95,12 +95,9 @@ function embed({ name, when, channel, color, author, authorIcon = true, thumb, t
   card.style.borderLeftColor = color;
   if (author) {
     const a = el('div', 'dp-author');
-    if (authorIcon) a.appendChild(el('span', 'dp-avatar'));
-    a.appendChild(el('span', '', author));
+    a.append(el('span', 'dp-avatar'), el('span', '', author));
     card.appendChild(a);
   }
-  // Discord floats the thumbnail top-right; a placeholder square stands in for the player head.
-  if (thumb) card.prepend(el('span', 'dp-thumb'));
   if (title) card.appendChild(el('div', 'dp-title', title));
   if (description) { const d = el('div', 'dp-desc'); d.appendChild(markdown(description)); card.appendChild(d); }
   if (fields?.length) {
@@ -113,7 +110,7 @@ function embed({ name, when, channel, color, author, authorIcon = true, thumb, t
     }
     card.appendChild(g);
   }
-  card.appendChild(el('div', 'dp-footer', `${footer ? `${footer} • ` : ''}Today at 10:00 AM`));
+  if (!noFooter) card.appendChild(el('div', 'dp-footer', `${footer ? `${footer} • ` : ''}Today at 10:00 AM`));
   wrap.appendChild(card);
   if (chat) {
     // One chat message per line, the way WallBot#_send splits it.
@@ -125,23 +122,41 @@ function embed({ name, when, channel, color, author, authorIcon = true, thumb, t
   return wrap;
 }
 
-// The report embed from server/report.js#reportEmbed, both ways the reporter can choose.
+// The report post from server/report.js#reportEmbeds: number, names, both heads side by side
+// (Discord merges cards 1 and 2 into one gallery), then the message card with the footer.
+const KIND_PREVIEW = {
+  report: { color: '#8B5A2B', title: '🚩 Report', target: 'Reported player', footer: 'Turtle Council · Reports' },
+  praise: { color: '#2ECC71', title: '🌟 Shout-out', target: 'Shout-out for', footer: 'Turtle Council · Shout-outs' },
+};
+function reportCard({ kind, named, id, text }) {
+  const k = KIND_PREVIEW[kind];
+  const wrap = embed({
+    name: `${kind === 'praise' ? 'Good message' : 'Report'}, ${named ? 'named' : 'anonymous'}`,
+    channel: 'report', color: k.color, title: `${k.title} #${id}`, noFooter: true,
+    fields: [
+      { name: k.target, value: 'griefer123', inline: true },
+      { name: 'Submitted by', value: named ? 'zghostx' : '🕶️ Anonymous', inline: true },
+    ],
+  });
+  const top = wrap.querySelector('.dp-embed');
+  const heads = el('div', 'dp-heads');
+  heads.append(el('span', 'dp-head', 'griefer123'), el('span', 'dp-head', named ? 'zghostx' : '?'));
+  top.appendChild(heads);
+  const msg = el('div', 'dp-embed');
+  msg.style.borderLeftColor = k.color;
+  const d = el('div', 'dp-desc'); d.appendChild(markdown(text)); msg.appendChild(d);
+  msg.appendChild(el('div', 'dp-footer', `${k.footer} • Today at 10:00 AM`));
+  top.after(msg);
+  return wrap;
+}
+
 function renderReport() {
   const root = document.getElementById('report-preview');
   if (!root) return;
-  const text = '> Saw someone from another faction breaking into our east wall around 9pm.\n> They came in through the water gap.';
-  const card = (named) => embed({
-    name: named ? 'Report, named' : 'Report, anonymous', channel: 'report', color: COLORS.report,
-    when: named ? 'The player chose "Show my name".' : 'The default. The panel still shows who sent it.',
-    author: named ? 'Report from zghostx' : 'Anonymous report', authorIcon: named,
-    thumb: true, title: `📋 Report #${named ? 43 : 42}`, description: text,
-    fields: [
-      { name: 'Reported player', value: 'griefer123', inline: true },
-      { name: 'Submitted by', value: named ? 'zghostx' : '🕶️ Anonymous', inline: true },
-    ],
-    footer: 'Turtle Council · Reports',
-  });
-  root.replaceChildren(card(false), card(true));
+  root.replaceChildren(
+    reportCard({ kind: 'report', named: false, id: 42, text: '> Saw someone from another faction breaking into our east wall around 9pm.\n> They came in through the water gap.' }),
+    reportCard({ kind: 'praise', named: true, id: 43, text: '> Stayed up all night checking walls during the raid. Legend.' }),
+  );
 }
 
 function render() {

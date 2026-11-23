@@ -4,7 +4,7 @@
 // The route is public (no panel password): Caddy should expose only /r/* on the report hostname.
 import crypto from 'node:crypto';
 import express from 'express';
-import { getSettings, insertReport } from './db/db.js';
+import { getSettings, insertReport, listWallPlayers } from './db/db.js';
 
 export const REPORT_TTL_MS = 30 * 60 * 1000;
 export const REPORT_MAX_LEN = 2000;
@@ -56,30 +56,47 @@ main{max-width:560px;margin:0 auto}h1{font-size:1.4rem;margin:0 0 8px}p{color:#a
 label{display:block;margin:16px 0 6px}fieldset{border:0;padding:0;margin:16px 0 0}
 legend{padding:0;margin-bottom:6px}.choice{display:flex;gap:10px;align-items:flex-start;margin:6px 0;
 padding:10px;border:1px solid #3a3740;border-radius:6px;cursor:pointer}.choice input{width:auto;margin:4px 0 0}
-.choice small{display:block;color:#a9a39a}input,textarea{width:100%;box-sizing:border-box;padding:10px;
+.choice small{display:block;color:#a9a39a}input,textarea,select{width:100%;box-sizing:border-box;padding:10px;
 border-radius:6px;border:1px solid #3a3740;background:#211f25;color:inherit;font:inherit}
 textarea{min-height:180px;resize:vertical}button{margin-top:16px;padding:10px 18px;border:0;
 border-radius:6px;background:#c9a96e;color:#17161a;font:inherit;font-weight:600;cursor:pointer}
 </style></head><body><main>${body}</main></body></html>`;
 }
 
-const formPage = (token) => page('Report', `
+// Who a report can be about: the players the bot has verified, minus the reporter. The form offers
+// only these, and the POST re-checks against the same list, so a hand-edited form can't name
+// anyone else.
+const verifiedPlayers = (entry) => listWallPlayers.all(entry.userId)
+  .filter((p) => p.verified && p.player !== entry.player)
+  .map((p) => p.player);
+
+const formPage = (token, players) => page('Report', `
 <h1>Report</h1>
 <p>The Turtle Council will read the information. This link works once.</p>
 <form method="post" action="/r/${esc(token)}">
+<fieldset>
+<legend>What are you sending?</legend>
+<label class="choice"><input type="radio" name="kind" value="report" checked>
+<span>🚩 A report<small>Something someone did wrong.</small></span></label>
+<label class="choice"><input type="radio" name="kind" value="praise">
+<span>🌟 A good message<small>A shout-out for someone who did well.</small></span></label>
+</fieldset>
 <label for="about">Who is this about? (optional)</label>
-<input id="about" name="about" maxlength="64" autocomplete="off">
+<select id="about" name="about">
+<option value="">Nobody in particular</option>
+${players.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+</select>
 <label for="text">What happened?</label>
 <textarea id="text" name="text" required maxlength="${REPORT_MAX_LEN}"></textarea>
 <fieldset>
-<legend>Show your name on the report?</legend>
+<legend>Show your name?</legend>
 <label class="choice"><input type="radio" name="identity" value="anonymous" checked>
 <span>Stay anonymous<small>Your name is left off the post the council sees.</small></span></label>
 <label class="choice"><input type="radio" name="identity" value="named">
-<span>Show my name<small>The council sees that this report came from you.</small></span></label>
-<p><small>Either way, whoever runs the bot can see who sent each report.</small></p>
+<span>Show my name<small>The council sees that this came from you.</small></span></label>
+<p><small>Either way, whoever runs the bot can see who sent each message.</small></p>
 </fieldset>
-<button type="submit">Send report</button>
+<button type="submit">Send</button>
 </form>`);
 
 const deadPage = () => page('Link expired', '<h1>This link has expired or was already used.</h1><p>Message the bot <b>report</b> again for a new one.</p>');
@@ -92,8 +109,9 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
   router.param('token', (req, _res, next, t) => { req.params.token = String(t).toLowerCase(); next(); });
 
   router.get('/:token', (req, res) => {
-    if (!live(req.params.token)) return res.status(410).send(deadPage());
-    res.send(formPage(req.params.token));
+    const entry = live(req.params.token);
+    if (!entry) return res.status(410).send(deadPage());
+    res.send(formPage(req.params.token, verifiedPlayers(entry)));
   });
 
   router.post('/:token', async (req, res) => {
@@ -101,10 +119,12 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     const entry = live(token);
     if (!entry) return res.status(410).send(deadPage());
     const text = String(req.body?.text || '').trim().slice(0, REPORT_MAX_LEN);
-    const about = String(req.body?.about || '').trim().slice(0, 64);
+    const picked = String(req.body?.about || '').trim().toLowerCase();
+    const about = verifiedPlayers(entry).includes(picked) ? picked : '';
     // Anything but an explicit "named" stays anonymous: the safe default if the field is missing.
     const anonymous = req.body?.identity === 'named' ? 0 : 1;
-    if (!text) return res.status(400).send(formPage(token));
+    const kind = req.body?.kind === 'praise' ? 'praise' : 'report';
+    if (!text) return res.status(400).send(formPage(token, verifiedPlayers(entry)));
 
     const settings = getSettings.get(entry.userId);
     const webhook = settings?.report_discord_webhook;
@@ -116,56 +136,70 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     // Consume first so a double-submit can't file twice. The ticket is saved before Discord is
     // tried, so a dead webhook never loses a report — it is still in the panel.
     tokens.delete(token);
-    const report = { user_id: entry.userId, player: entry.player, about, text, anonymous, created_at: Date.now() };
+    const report = { user_id: entry.userId, player: entry.player, about, text, anonymous, kind, created_at: Date.now() };
     const id = Number(insertReport.run(report).lastInsertRowid);
     const { user_id: _u, ...row } = report;
     emitToUser(entry.userId, { type: 'reportFiled', report: { id, ...row } });
     let note = '';
     try {
       // The sender reaches Discord only when the reporter chose to be named.
-      await post(webhook, { id, text, about, ...(anonymous ? {} : { player: entry.player }) });
+      await post(webhook, { id, kind, text, about, ...(anonymous ? {} : { player: entry.player }) });
     } catch {
       note = '<p>Discord did not take it, but it is saved and staff will see it.</p>';
     }
-    res.send(page('Sent', `<h1>Report #${id} sent.</h1>${note}<p>You can close this page.</p>`));
+    res.send(page('Sent', `<h1>${kind === 'praise' ? 'Shout-out' : 'Report'} #${id} sent.</h1>${note}<p>You can close this page.</p>`));
   });
 
   return router;
 }
 
-const HEAD_URL = (name) => `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
+// 3D head render. MHF_Question is Mojang's "?" head: stands in for an anonymous sender or a
+// "who is this about" that isn't a Minecraft name.
+const HEAD_URL = (name) => `https://mc-heads.net/head/${encodeURIComponent(name)}/128`;
 const MC_NAME_RE = /^\w{3,16}$/;
+const UNKNOWN_HEAD = 'MHF_Question';
 
-// Shared with the panel preview (public/embed-preview.js mirrors this shape). `player` is set only
-// when the reporter chose to be named; otherwise nothing in the embed identifies them.
-export function reportEmbed({ id, text, about, player }) {
-  // Quote every line so the report reads as the player's own words.
+export const REPORT_KINDS = {
+  report: { color: 0x8B5A2B, title: '🚩 Report', target: 'Reported player', footer: 'Turtle Council · Reports' },
+  praise: { color: 0x2ECC71, title: '🌟 Shout-out', target: 'Shout-out for', footer: 'Turtle Council · Shout-outs' },
+};
+
+/**
+ * The embeds for one report, in reading order: number, then who it's about and who sent it, then
+ * both heads, then the message, then the footer. Discord draws an image *below* the fields, and
+ * merges the images of embeds that share a `url` into one gallery, so cards 1 and 2 (same url)
+ * show the two heads side by side under the names. The message has to be its own card 3 to sit
+ * below the heads. `player` is set only when the reporter chose to be named; otherwise nothing
+ * here identifies them. public/embed-preview.js draws a picture of this shape.
+ */
+export function reportEmbeds({ id, kind = 'report', text, about, player }) {
+  const k = REPORT_KINDS[kind] || REPORT_KINDS.report;
+  const target = MC_NAME_RE.test(about) ? about : '';
+  // Same url on cards 1 and 2 is what merges their images. It also makes the title a link.
+  const url = target ? `https://namemc.com/profile/${encodeURIComponent(target)}` : 'https://namemc.com/';
+  // Quote every line so the message reads as the player's own words.
   const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 4000);
-  const embed = {
-    color: 0xE67E22,
-    author: player
-      ? { name: `Report from ${player}`, icon_url: HEAD_URL(player) }
-      : { name: 'Anonymous report' },
-    title: `📋 Report #${id}`,
-    description: quoted,
-    fields: [
-      { name: 'Reported player', value: about || '*not given*', inline: true },
-      { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
-    ],
-    footer: { text: 'Turtle Council · Reports' },
-    timestamp: new Date().toISOString(),
-  };
-  if (MC_NAME_RE.test(about)) embed.thumbnail = { url: HEAD_URL(about) };
-  return embed;
+  return [
+    {
+      color: k.color, url, title: `${k.title} #${id}`,
+      fields: [
+        { name: k.target, value: about || '*not given*', inline: true },
+        { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
+      ],
+      image: { url: HEAD_URL(target || UNKNOWN_HEAD) },
+    },
+    { color: k.color, url, image: { url: HEAD_URL(player || UNKNOWN_HEAD) } },
+    { color: k.color, description: quoted, footer: { text: k.footer }, timestamp: new Date().toISOString() },
+  ];
 }
 
 async function postToDiscord(webhook, report) {
-  const embed = reportEmbed(report);
+  const embeds = reportEmbeds(report);
   const res = await fetch(webhook, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // allowed_mentions empty: a report can never ping anyone, whatever it contains.
-    body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
+    body: JSON.stringify({ embeds, allowed_mentions: { parse: [] } }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }

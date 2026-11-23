@@ -1683,6 +1683,12 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
     return res.status;
   };
   try {
+    db.upsertWallPlayer.run({ user_id: USER, player: 'bob', verified: 1, label: '', added_at: Date.now() });
+    db.upsertWallPlayer.run({ user_id: USER, player: 'unverified', verified: 0, label: '', added_at: Date.now() });
+    const formHtml = await (await fetch(base, { headers: { connection: 'close' } })).text();
+    assert.match(formHtml, /<option value="bob">/, 'verified players are offered');
+    assert.ok(!formHtml.includes('value="unverified"'), 'unverified players are not');
+    assert.ok(!formHtml.includes('value="snitch"'), 'the reporter is not offered themselves');
     assert.equal(await hit(base), 200);
     assert.match(token, /^[a-z0-9]{16}$/, 'lowercase token survives chat case mangling');
     assert.equal(await hit(base.replace(token, token.toUpperCase())), 200, 'case-insensitive');
@@ -1691,8 +1697,9 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
     const [saved] = db.listReports.all(USER);
     assert.equal(saved.player, 'snitch');
     assert.equal(saved.text, 'they took the loot');
-    assert.deepEqual(posts, [{ hook: 'https://discord.test/hook', body: { id: saved.id, text: 'they took the loot', about: 'bob' } }]);
+    assert.deepEqual(posts, [{ hook: 'https://discord.test/hook', body: { id: saved.id, kind: 'report', text: 'they took the loot', about: 'bob' } }]);
     assert.equal(saved.anonymous, 1, 'anonymous by default');
+    assert.equal(saved.kind, 'report', 'a report by default');
     assert.ok(!JSON.stringify(posts).toLowerCase().includes('snitch'), 'Discord never sees the sender');
     assert.equal(emitted[0].type, 'reportFiled');
     assert.equal(emitted[0].report.player, 'snitch');
@@ -1739,14 +1746,20 @@ test('report: verified-only switch is independent of the wall bot', () => {
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_verified_only: 1 }); }
 });
 
-test('report embed: named shows the sender, anonymous never does', async () => {
-  const { reportEmbed } = await import('../server/report.js');
-  const named = reportEmbed({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
-  assert.equal(named.author.name, 'Report from snitch');
-  assert.equal(named.description, '> line one\n> line two');
-  assert.match(named.thumbnail.url, /griefer123/);
-  const anon = reportEmbed({ id: 8, text: 'x', about: 'not a name!' });
+test('report embeds: number, names, heads, then message; anonymous never names the sender', async () => {
+  const { reportEmbeds } = await import('../server/report.js');
+  const [top, second, msg] = reportEmbeds({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
+  assert.equal(top.title, '🚩 Report #7');
+  assert.deepEqual(top.fields.map((f) => f.value), ['griefer123', 'snitch']);
+  assert.match(top.image.url, /griefer123/);
+  assert.match(second.image.url, /snitch/);
+  assert.equal(top.url, second.url, 'shared url merges the two heads into one gallery');
+  assert.equal(msg.description, '> line one\n> line two');
+
+  const anon = reportEmbeds({ id: 8, kind: 'praise', text: 'x', about: 'not a name!' });
   assert.ok(!JSON.stringify(anon).includes('snitch'));
-  assert.equal(anon.author.name, 'Anonymous report');
-  assert.equal(anon.thumbnail, undefined, 'no head for a non-username');
+  assert.equal(anon[0].title, '🌟 Shout-out #8');
+  assert.equal(anon[0].color, 0x2ECC71);
+  assert.match(anon[0].image.url, /MHF_Question/, 'non-username gets the ? head');
+  assert.match(anon[1].image.url, /MHF_Question/, 'anonymous sender gets the ? head');
 });
