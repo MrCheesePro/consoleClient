@@ -82,7 +82,7 @@ function pingLine(toggleKey) {
   return m ? '@Role' : null;
 }
 
-function embed({ name, when, channel, color, author, thumb, title, description, fields, footer, chat, ping }) {
+function embed({ name, when, channel, color, author, authorIcon = true, thumb, title, description, fields, footer, chat, ping }) {
   const wrap = el('figure', 'dp-item');
   const where = destination(channel);
   const cap = el('figcaption', 'dp-caption');
@@ -95,7 +95,8 @@ function embed({ name, when, channel, color, author, thumb, title, description, 
   card.style.borderLeftColor = color;
   if (author) {
     const a = el('div', 'dp-author');
-    a.append(el('span', 'dp-avatar'), el('span', '', author));
+    if (authorIcon) a.appendChild(el('span', 'dp-avatar'));
+    a.appendChild(el('span', '', author));
     card.appendChild(a);
   }
   // Discord floats the thumbnail top-right; a placeholder square stands in for the player head.
@@ -135,8 +136,8 @@ const reportCard = ({ kind, named, id, text }) => {
   return embed({
     name: `${kind === 'praise' ? 'Good message' : 'Report'}, ${named ? 'named' : 'anonymous'}`,
     channel: 'report', color: k.color, thumb: true,
-    title: `${k.title} #${id}`,
-    description: `${named ? `${word} from **zghostx**` : `Anonymous ${word.toLowerCase()}`}\n\n${text}`,
+    author: named ? `${word} from zghostx` : `Anonymous ${word.toLowerCase()}`, authorIcon: named,
+    title: `${k.title} #${id}`, description: text,
     fields: [
       { name: k.target, value: 'griefer123', inline: true },
       { name: 'Submitted by', value: named ? 'zghostx' : '🕶️ Anonymous', inline: true },

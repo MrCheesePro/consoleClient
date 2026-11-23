@@ -1750,11 +1750,12 @@ test('report embed: named shows the sender, anonymous never does; kind sets colo
   const { reportEmbed } = await import('../server/report.js');
   const named = reportEmbed({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
   assert.equal(named.title, '🚩 Report #7');
-  assert.equal(named.description, 'Report from **snitch**\n\n> line one\n> line two');
+  assert.equal(named.author.name, 'Report from snitch');
+  assert.equal(named.description, '> line one\n> line two');
   assert.match(named.thumbnail.url, /griefer123/);
   const anon = reportEmbed({ id: 8, kind: 'praise', text: 'x', about: 'not a name!' });
   assert.ok(!JSON.stringify(anon).includes('snitch'));
-  assert.match(anon.description, /^Anonymous shout-out\n/);
+  assert.equal(anon.author.name, 'Anonymous shout-out');
   assert.equal(anon.color, 0x2ECC71);
   assert.equal(anon.thumbnail, undefined, 'no head for a non-username');
 });

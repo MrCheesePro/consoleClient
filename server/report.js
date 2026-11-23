@@ -166,15 +166,16 @@ export const REPORT_KINDS = {
 export function reportEmbed({ id, kind = 'report', text, about, player }) {
   const k = REPORT_KINDS[kind] || REPORT_KINDS.report;
   // Quote every line so the message reads as the player's own words.
-  const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 3900);
+  const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 4000);
   const word = kind === 'praise' ? 'Shout-out' : 'Report';
-  // Number on top as the title, who sent it on the line under. Discord always draws `author` above
-  // the title, so the "from" line lives at the top of the description instead.
-  const from = player ? `${word} from **${player}**` : `Anonymous ${word.toLowerCase()}`;
+  // Who sent it on top (with their head), then the number as the title.
   const embed = {
     color: k.color,
+    author: player
+      ? { name: `${word} from ${player}`, icon_url: HEAD_URL(player) }
+      : { name: `Anonymous ${word.toLowerCase()}` },
     title: `${k.title} #${id}`,
-    description: `${from}\n\n${quoted}`,
+    description: quoted,
     fields: [
       { name: k.target, value: about || '*not given*', inline: true },
       { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
