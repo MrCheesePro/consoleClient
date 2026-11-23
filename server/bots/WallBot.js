@@ -491,7 +491,9 @@ export default class WallBot {
       this._notifyOnce(userId, player, 'Reports are turned off right now.');
       return true;
     }
-    if (!this._requireAuthorized(userId, settings, player)) return true;
+    // Reports have their own verified-only switch, independent of the wall bot's.
+    const gate = { ...settings, wall_require_verified: settings.reports_verified_only };
+    if (!this._requireAuthorized(userId, gate, player)) return true;
 
     const state = this._stateFor(userId);
     const now = Date.now();

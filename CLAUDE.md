@@ -168,7 +168,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `reportFiled`; the Discord post carries the ticket number but **never the sender** — keep that split.
   The panel lists them via `GET /api/reports` in its own **Reports** view (tickets are native
   `<details>`). `reports_enabled` (default on) is the panel off switch: off, the bot refuses `report`
-  **and** `POST /r/:token` refuses links already handed out. `report_discord_webhook` **does not fall back** to the
+  **and** `POST /r/:token` refuses links already handed out.
+  `reports_verified_only` (default on) gates `report` on verification on its own, ignoring
+  `wall_require_verified`. `report_discord_webhook` **does not fall back** to the
   wall webhook (unlike every other channel): blank means reports are off, because a complaint in the
   faction-wide channel is worse than none. Posts set `allowed_mentions: { parse: [] }`.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the

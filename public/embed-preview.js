@@ -3,10 +3,11 @@
 // each would land in. Display only: it reads the settings inputs and never saves anything.
 //
 // The shapes mirror the embeds built in server/bots/WallBot.js (_tick, _countCheck,
-// _sendRaidAlert, _raidOutpostNotice) and the routing in WallBot#_send. If those change, update
+// _sendRaidAlert, _raidOutpostNotice), the routing in WallBot#_send, and the report embed in
+// server/report.js#postToDiscord. If those change, update
 // this to match — the preview is a picture of them, not a second source of truth.
 
-const COLORS = { alert: '#ED4245', ok: '#57F287', log: '#22D3EE', raidLog: '#9B59B6', muted: '#99AAB5' };
+const COLORS = { report: '#E67E22', alert: '#ED4245', ok: '#57F287', log: '#22D3EE', raidLog: '#9B59B6', muted: '#99AAB5' };
 const DISCORD_REMINDER_DEFAULT = 'Minutes Unchecked: **{minutes}**\nLast Checker: **{player}** (Total Checks: {checks})';
 const DISCORD_RAID_OUTPOST_DEFAULT = 'Raid Minutes Unchecked: **{raidMinutes}**\nLast Checker: **{raidPlayer}** (Total Raid Checks: {raidChecks})';
 const DISCORD_RAID_DEFAULT = 'Check walls immediately and get online.';
@@ -50,6 +51,11 @@ const el = (tag, cls, text) => {
 // Where WallBot#_send would post this channel: its own webhook when toggled on with a URL, else
 // the wall webhook when "Send to Discord" is on, else nowhere.
 function destination(channel) {
+  // Reports never fall back to the wall webhook (server/report.js).
+  if (channel === 'report') {
+    if (!on('reports_enabled')) return { text: 'not sent: reports are turned off', sent: false };
+    return value('report_discord_webhook') ? { text: '→ reports webhook', sent: true } : { text: 'not sent: reports webhook is blank', sent: false };
+  }
   const own = {
     check: on('check_to_discord') && value('check_discord_webhook') ? 'logs webhook' : null,
     raid: on('raid_to_discord') && value('raid_discord_webhook') ? 'weewoo webhook' : null,
@@ -107,7 +113,21 @@ function embed({ name, when, channel, color, author, title, description, fields,
   return wrap;
 }
 
+// The report embed from server/report.js#postToDiscord: ticket number, text, optional "About".
+// No sender, ever — that only shows in the panel.
+function renderReport() {
+  const root = document.getElementById('report-preview');
+  if (!root) return;
+  root.replaceChildren(embed({
+    name: 'Report ticket', channel: 'report', color: COLORS.report,
+    when: 'Posted when a player sends the form. The sender is left out; only the panel shows who it was.',
+    title: 'Report #42', description: 'Saw someone from another faction breaking into our east wall around 9pm.',
+    fields: [{ name: 'About', value: 'griefer123', inline: false }],
+  }));
+}
+
 function render() {
+  renderReport();
   const root = document.getElementById('discord-preview');
   if (!root) return;
   const bot = SAMPLE.bot;

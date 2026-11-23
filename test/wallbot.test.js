@@ -1654,7 +1654,7 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
   const { createReportRouter } = await import('../server/report.js');
   const express = (await import('express')).default;
   process.env.PUBLIC_URL = 'https://report.example.com/';
-  const { wb, session } = harness({ wall_require_verified: 0, report_discord_webhook: 'https://discord.test/hook' });
+  const { wb, session } = harness({ reports_verified_only: 0, report_discord_webhook: 'https://discord.test/hook' });
   const consoleLines = [];
   wb.emitToUser = (_u, m) => { if (m.type === 'consoleLine') consoleLines.push(m.text); };
 
@@ -1719,4 +1719,16 @@ test('report: panel toggle off refuses the link', () => {
     assert.ok(!lines.some((l) => l.includes('/r/')), 'no link handed out');
     assert.ok(lines.some((l) => l.includes('Reports are turned off')));
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_enabled: 1 }); }
+});
+
+test('report: verified-only switch is independent of the wall bot', () => {
+  process.env.PUBLIC_URL = 'https://report.example.com';
+  const { wb, session } = harness({ wall_require_verified: 0, reports_verified_only: 1, report_discord_webhook: 'https://discord.test/hook' });
+  const lines = [];
+  wb.emitToUser = (_u, m) => { if (m.type === 'consoleLine') lines.push(m.text); };
+  try {
+    wb.handleChat(USER, session, 'Stranger: report');
+    assert.ok(!lines.some((l) => l.includes('/r/')), 'unverified player refused');
+    assert.ok(lines.some((l) => l.includes('not verified')));
+  } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_verified_only: 1 }); }
 });

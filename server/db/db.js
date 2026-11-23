@@ -118,6 +118,7 @@ db.exec(`
     raid_outpost_discord_webhook TEXT NOT NULL DEFAULT '',
     report_discord_webhook TEXT NOT NULL DEFAULT '',
     reports_enabled       INTEGER NOT NULL DEFAULT 1,
+    reports_verified_only INTEGER NOT NULL DEFAULT 1,
     discord_ping_role     TEXT    NOT NULL DEFAULT '',
     ping_weewoo           INTEGER NOT NULL DEFAULT 1,
     ping_raid_outpost     INTEGER NOT NULL DEFAULT 1
@@ -219,6 +220,7 @@ db.exec(`
   addColumn('ping_raid_outpost', `ping_raid_outpost INTEGER NOT NULL DEFAULT 1`);
   addColumn('report_discord_webhook', `report_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('reports_enabled', `reports_enabled INTEGER NOT NULL DEFAULT 1`);
+  addColumn('reports_verified_only', `reports_verified_only INTEGER NOT NULL DEFAULT 1`);
   addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
 }
 
@@ -338,7 +340,7 @@ const SETTINGS_FIELDS = [
   'check_to_discord', 'check_discord_webhook',
   'grace_period', 'raid_outpost_faction', 'raid_outpost_trigger',
   'raid_outpost_reminder_message', 'raid_outpost_combined_message',
-  'raid_outpost_discord_webhook', 'report_discord_webhook', 'reports_enabled',
+  'raid_outpost_discord_webhook', 'report_discord_webhook', 'reports_enabled', 'reports_verified_only',
   'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost',
 ];
 

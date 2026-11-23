@@ -616,10 +616,17 @@
               <div class="ledger-meta"><h4>Setup</h4><p>Off, the bot refuses <code>report</code> and links already handed out stop working.</p></div>
               <div class="ledger-fields form-grid">
                 <label class="toggle-row span-full"><button class="toggle" data-setting="reports_enabled" aria-pressed="false"></button><span>Players can message the bot <code>report</code></span></label>
+                <label class="toggle-row span-full"><button class="toggle" data-setting="reports_verified_only" aria-pressed="false"></button><span>Verified players only <span class="label-sub">off = anyone can ask for a link</span></span></label>
                 <div class="field span-full">
                   <label class="field-label">Reports webhook URL <span class="label-sub">Private staff channel. Blank turns reports off; never falls back.</span></label>
                   <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="report_discord_webhook" />
                 </div>
+              </div>
+            </div>
+            <div class="ledger-row">
+              <div class="ledger-meta"><h4>Preview</h4><p>How a ticket looks in Discord, with sample text.</p></div>
+              <div class="ledger-fields">
+                <div id="report-preview" class="discord-preview" aria-label="Discord report preview"></div>
               </div>
             </div>
             <div class="ledger-row">
