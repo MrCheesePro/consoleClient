@@ -735,7 +735,7 @@ function renderReports() {
     const head = document.createElement('summary');
     head.className = 'report-head';
     const when = new Date(r.created_at).toLocaleString([], { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    head.textContent = `#${r.id} · from ${r.player}${r.about ? ` · about ${r.about}` : ''} · ${when}`;
+    head.textContent = `#${r.id} · from ${r.player}${r.anonymous ? ' (anonymous)' : ' (named)'}${r.about ? ` · about ${r.about}` : ''} · ${when}`;
     const body = document.createElement('div');
     body.className = 'report-text';
     body.textContent = r.text;

@@ -53,7 +53,10 @@ function page(title, body) {
 <title>${esc(title)}</title><style>
 body{font:16px/1.5 system-ui,sans-serif;background:#17161a;color:#e8e4dc;margin:0;padding:24px 16px}
 main{max-width:560px;margin:0 auto}h1{font-size:1.4rem;margin:0 0 8px}p{color:#a9a39a}
-label{display:block;margin:16px 0 6px}input,textarea{width:100%;box-sizing:border-box;padding:10px;
+label{display:block;margin:16px 0 6px}fieldset{border:0;padding:0;margin:16px 0 0}
+legend{padding:0;margin-bottom:6px}.choice{display:flex;gap:10px;align-items:flex-start;margin:6px 0;
+padding:10px;border:1px solid #3a3740;border-radius:6px;cursor:pointer}.choice input{width:auto;margin:4px 0 0}
+.choice small{display:block;color:#a9a39a}input,textarea{width:100%;box-sizing:border-box;padding:10px;
 border-radius:6px;border:1px solid #3a3740;background:#211f25;color:inherit;font:inherit}
 textarea{min-height:180px;resize:vertical}button{margin-top:16px;padding:10px 18px;border:0;
 border-radius:6px;background:#c9a96e;color:#17161a;font:inherit;font-weight:600;cursor:pointer}
@@ -68,6 +71,14 @@ const formPage = (token) => page('Report', `
 <input id="about" name="about" maxlength="64" autocomplete="off">
 <label for="text">What happened?</label>
 <textarea id="text" name="text" required maxlength="${REPORT_MAX_LEN}"></textarea>
+<fieldset>
+<legend>Show your name on the report?</legend>
+<label class="choice"><input type="radio" name="identity" value="anonymous" checked>
+<span>Stay anonymous<small>Your name is left off the post the council sees.</small></span></label>
+<label class="choice"><input type="radio" name="identity" value="named">
+<span>Show my name<small>The council sees that this report came from you.</small></span></label>
+<p><small>Either way, whoever runs the bot can see who sent each report.</small></p>
+</fieldset>
 <button type="submit">Send report</button>
 </form>`);
 
@@ -91,6 +102,8 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     if (!entry) return res.status(410).send(deadPage());
     const text = String(req.body?.text || '').trim().slice(0, REPORT_MAX_LEN);
     const about = String(req.body?.about || '').trim().slice(0, 64);
+    // Anything but an explicit "named" stays anonymous: the safe default if the field is missing.
+    const anonymous = req.body?.identity === 'named' ? 0 : 1;
     if (!text) return res.status(400).send(formPage(token));
 
     const settings = getSettings.get(entry.userId);
@@ -103,13 +116,14 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     // Consume first so a double-submit can't file twice. The ticket is saved before Discord is
     // tried, so a dead webhook never loses a report — it is still in the panel.
     tokens.delete(token);
-    const report = { user_id: entry.userId, player: entry.player, about, text, created_at: Date.now() };
+    const report = { user_id: entry.userId, player: entry.player, about, text, anonymous, created_at: Date.now() };
     const id = Number(insertReport.run(report).lastInsertRowid);
     const { user_id: _u, ...row } = report;
     emitToUser(entry.userId, { type: 'reportFiled', report: { id, ...row } });
     let note = '';
     try {
-      await post(webhook, { id, text, about });
+      // The sender reaches Discord only when the reporter chose to be named.
+      await post(webhook, { id, text, about, ...(anonymous ? {} : { player: entry.player }) });
     } catch {
       note = '<p>Discord did not take it, but it is saved and staff will see it.</p>';
     }
@@ -119,9 +133,34 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
   return router;
 }
 
-async function postToDiscord(webhook, { id, text, about }) {
-  const embed = { color: 0xE67E22, title: `Report #${id}`, description: text, timestamp: new Date().toISOString() };
-  if (about) embed.fields = [{ name: 'About', value: about }];
+const HEAD_URL = (name) => `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
+const MC_NAME_RE = /^\w{3,16}$/;
+
+// Shared with the panel preview (public/embed-preview.js mirrors this shape). `player` is set only
+// when the reporter chose to be named; otherwise nothing in the embed identifies them.
+export function reportEmbed({ id, text, about, player }) {
+  // Quote every line so the report reads as the player's own words.
+  const quoted = text.split(/\r?\n/).map((l) => `> ${l}`).join('\n').slice(0, 4000);
+  const embed = {
+    color: 0xE67E22,
+    author: player
+      ? { name: `Report from ${player}`, icon_url: HEAD_URL(player) }
+      : { name: 'Anonymous report' },
+    title: `📋 Report #${id}`,
+    description: quoted,
+    fields: [
+      { name: 'Reported player', value: about || '*not given*', inline: true },
+      { name: 'Submitted by', value: player || '🕶️ Anonymous', inline: true },
+    ],
+    footer: { text: 'Turtle Council · Reports' },
+    timestamp: new Date().toISOString(),
+  };
+  if (MC_NAME_RE.test(about)) embed.thumbnail = { url: HEAD_URL(about) };
+  return embed;
+}
+
+async function postToDiscord(webhook, report) {
+  const embed = reportEmbed(report);
   const res = await fetch(webhook, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

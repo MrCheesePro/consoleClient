@@ -23,19 +23,28 @@ function fill(template, values) {
   return String(template).replace(/\{(\w+)\}/g, (whole, k) => (k in values ? String(values[k]) : whole));
 }
 
-// The small subset of Discord markdown the bot's messages use: **bold**, `code`, line breaks.
+// The small subset of Discord markdown the bot's messages use: **bold**, *italic*, `code`,
+// `> ` quote lines, line breaks.
 // Text is set through textContent first, so nothing from a template is ever parsed as HTML.
 function markdown(text) {
   const frag = document.createDocumentFragment();
   String(text).split('\n').forEach((line, i) => {
-    if (i) frag.appendChild(document.createElement('br'));
-    for (const part of line.split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+    if (i && !line.startsWith('> ')) frag.appendChild(document.createElement('br'));
+    let target = frag;
+    if (line.startsWith('> ')) {
+      target = document.createElement('div');
+      target.className = 'dp-quote';
+      frag.appendChild(target);
+      line = line.slice(2);
+    }
+    for (const part of line.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/)) {
       if (!part) continue;
       let el;
       if (part.startsWith('**') && part.endsWith('**')) { el = document.createElement('strong'); el.textContent = part.slice(2, -2); }
+      else if (part.length > 2 && part.startsWith('*') && part.endsWith('*')) { el = document.createElement('em'); el.textContent = part.slice(1, -1); }
       else if (part.startsWith('`') && part.endsWith('`')) { el = document.createElement('code'); el.textContent = part.slice(1, -1); }
       else el = document.createTextNode(part);
-      frag.appendChild(el);
+      target.appendChild(el);
     }
   });
   return frag;
@@ -73,7 +82,7 @@ function pingLine(toggleKey) {
   return m ? '@Role' : null;
 }
 
-function embed({ name, when, channel, color, author, title, description, fields, footer, chat, ping }) {
+function embed({ name, when, channel, color, author, authorIcon = true, thumb, title, description, fields, footer, chat, ping }) {
   const wrap = el('figure', 'dp-item');
   const where = destination(channel);
   const cap = el('figcaption', 'dp-caption');
@@ -86,9 +95,12 @@ function embed({ name, when, channel, color, author, title, description, fields,
   card.style.borderLeftColor = color;
   if (author) {
     const a = el('div', 'dp-author');
-    a.append(el('span', 'dp-avatar'), el('span', '', author));
+    if (authorIcon) a.appendChild(el('span', 'dp-avatar'));
+    a.appendChild(el('span', '', author));
     card.appendChild(a);
   }
+  // Discord floats the thumbnail top-right; a placeholder square stands in for the player head.
+  if (thumb) card.prepend(el('span', 'dp-thumb'));
   if (title) card.appendChild(el('div', 'dp-title', title));
   if (description) { const d = el('div', 'dp-desc'); d.appendChild(markdown(description)); card.appendChild(d); }
   if (fields?.length) {
@@ -113,17 +125,23 @@ function embed({ name, when, channel, color, author, title, description, fields,
   return wrap;
 }
 
-// The report embed from server/report.js#postToDiscord: ticket number, text, optional "About".
-// No sender, ever — that only shows in the panel.
+// The report embed from server/report.js#reportEmbed, both ways the reporter can choose.
 function renderReport() {
   const root = document.getElementById('report-preview');
   if (!root) return;
-  root.replaceChildren(embed({
-    name: 'Report ticket', channel: 'report', color: COLORS.report,
-    when: 'Posted when a player sends the form. The sender is left out; only the panel shows who it was.',
-    title: 'Report #42', description: 'Saw someone from another faction breaking into our east wall around 9pm.',
-    fields: [{ name: 'About', value: 'griefer123', inline: false }],
-  }));
+  const text = '> Saw someone from another faction breaking into our east wall around 9pm.\n> They came in through the water gap.';
+  const card = (named) => embed({
+    name: named ? 'Report, named' : 'Report, anonymous', channel: 'report', color: COLORS.report,
+    when: named ? 'The player chose "Show my name".' : 'The default. The panel still shows who sent it.',
+    author: named ? 'Report from zghostx' : 'Anonymous report', authorIcon: named,
+    thumb: true, title: `📋 Report #${named ? 43 : 42}`, description: text,
+    fields: [
+      { name: 'Reported player', value: 'griefer123', inline: true },
+      { name: 'Submitted by', value: named ? 'zghostx' : '🕶️ Anonymous', inline: true },
+    ],
+    footer: 'Turtle Council · Reports',
+  });
+  root.replaceChildren(card(false), card(true));
 }
 
 function render() {

@@ -169,9 +169,16 @@ db.exec(`
     player     TEXT    NOT NULL,
     about      TEXT    NOT NULL DEFAULT '',
     text       TEXT    NOT NULL,
+    anonymous  INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL
   );
 `);
+
+// The reporter's choice: anonymous hides the sender from Discord (the panel always sees it).
+{
+  const cols = new Set(db.prepare(`PRAGMA table_info(reports)`).all().map((c) => c.name));
+  if (!cols.has('anonymous')) db.exec(`ALTER TABLE reports ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 1`);
+}
 
 // ---- Lightweight migrations. CREATE TABLE IF NOT EXISTS won't add new columns to an
 // already-existing DB, so ALTER in any settings columns that are missing. ----
@@ -422,11 +429,11 @@ export const upsertWallPlayer = db.prepare(`
   ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label
 `);
 export const insertReport = db.prepare(
-  `INSERT INTO reports (user_id, player, about, text, created_at)
-   VALUES (@user_id, @player, @about, @text, @created_at)`
+  `INSERT INTO reports (user_id, player, about, text, anonymous, created_at)
+   VALUES (@user_id, @player, @about, @text, @anonymous, @created_at)`
 );
 export const listReports = db.prepare(
-  `SELECT id, player, about, text, created_at FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 200`
+  `SELECT id, player, about, text, anonymous, created_at FROM reports WHERE user_id = ? ORDER BY id DESC LIMIT 200`
 );
 export const deleteWallPlayer = db.prepare(
   `DELETE FROM wall_players WHERE user_id = ? AND player = ?`

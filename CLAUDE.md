@@ -165,7 +165,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - **Reports**: whispering `report` gets a one-time `PUBLIC_URL/r/<token>` link (30 min, 3 per
   player per hour). `/r` is mounted **outside** `requireAuth` on purpose. A submission is saved to the
   `reports` table first (its `id` is the ticket number, sender included) and streamed to the panel as
-  `reportFiled`; the Discord post carries the ticket number but **never the sender** — keep that split.
+  `reportFiled`; the Discord post (`reportEmbed`) carries the ticket number and the sender **only if the reporter picked
+  "Show my name"** on the form (`reports.anonymous`, default 1; anything but `identity=named` stays
+  anonymous) — keep that split.
   The panel lists them via `GET /api/reports` in its own **Reports** view (tickets are native
   `<details>`). `reports_enabled` (default on) is the panel off switch: off, the bot refuses `report`
   **and** `POST /r/:token` refuses links already handed out.

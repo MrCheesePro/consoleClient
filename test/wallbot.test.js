@@ -1692,6 +1692,7 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
     assert.equal(saved.player, 'snitch');
     assert.equal(saved.text, 'they took the loot');
     assert.deepEqual(posts, [{ hook: 'https://discord.test/hook', body: { id: saved.id, text: 'they took the loot', about: 'bob' } }]);
+    assert.equal(saved.anonymous, 1, 'anonymous by default');
     assert.ok(!JSON.stringify(posts).toLowerCase().includes('snitch'), 'Discord never sees the sender');
     assert.equal(emitted[0].type, 'reportFiled');
     assert.equal(emitted[0].report.player, 'snitch');
@@ -1736,4 +1737,16 @@ test('report: verified-only switch is independent of the wall bot', () => {
     assert.ok(!lines.some((l) => l.includes('/r/')), 'unverified player refused');
     assert.ok(!lines.some((l) => l.includes('(to stranger)')), 'and gets no reply at all');
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_verified_only: 1 }); }
+});
+
+test('report embed: named shows the sender, anonymous never does', async () => {
+  const { reportEmbed } = await import('../server/report.js');
+  const named = reportEmbed({ id: 7, text: 'line one\nline two', about: 'griefer123', player: 'snitch' });
+  assert.equal(named.author.name, 'Report from snitch');
+  assert.equal(named.description, '> line one\n> line two');
+  assert.match(named.thumbnail.url, /griefer123/);
+  const anon = reportEmbed({ id: 8, text: 'x', about: 'not a name!' });
+  assert.ok(!JSON.stringify(anon).includes('snitch'));
+  assert.equal(anon.author.name, 'Anonymous report');
+  assert.equal(anon.thumbnail, undefined, 'no head for a non-username');
 });
