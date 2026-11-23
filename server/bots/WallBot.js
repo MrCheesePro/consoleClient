@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
-  listWallPlayers, getWallPlayer, upsertWallPlayer, lastWallChecker, lastRaidChecker, linkPlayerUuid,
+  listWallPlayers, getWallPlayer, upsertWallPlayer, setDisplayName, missingDisplayNames, lastWallChecker, lastRaidChecker, linkPlayerUuid,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
   RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
@@ -105,9 +105,9 @@ export function banEmbed(b) {
       url: `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(b.player)}`,
     },
     fields: [
-      { name: 'Reason', value: [b.rules.join(', '), b.reason].filter(Boolean).join(' — ') || 'n/a' },
+      { name: 'Reason', value: [b.rules.join(', '), titleCase(b.reason)].filter(Boolean).join(' — ') || 'n/a' },
       // <t:…:R> is rendered live by each viewer's Discord, so it counts down on its own.
-      { name: 'Duration', value: b.expiresAt ? `${b.duration} · ends ${t(b.expiresAt, 'R')}` : b.duration || 'Permanent', inline: true },
+      { name: 'Duration', value: b.expiresAt ? `${titleCase(b.duration)} · Ends ${t(b.expiresAt, 'R')}` : titleCase(b.duration) || 'Permanent', inline: true },
       { name: 'Banned', value: t(b.at, 'f'), inline: true },
     ],
   };
@@ -143,7 +143,31 @@ async function fetchMojangUuid(name) {
   return uuid;
 }
 
-/** Drop legacy section-sign color codes so they can't break the chat pattern. */
+// The real capitalization of a name, from Mojang: by UUID when we have one, else by name. null on
+// any miss (nickname, renamed since, network trouble), or when the answer isn't the same name.
+export async function mojangName(name, uuid = '') {
+  const url = uuid ? `https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`
+    : `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(name)}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(UUID_LOOKUP_TIMEOUT_MS) });
+    const real = res.ok ? (await res.json()).name : null;
+    return real && real.toLowerCase() === name.toLowerCase() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fill display_name for stats/roster rows that don't have one yet. Sequential, to stay polite to Mojang. */
+export async function backfillDisplayNames() {
+  for (const row of missingDisplayNames.all()) {
+    const real = (row.uuid && await mojangName(row.player, row.uuid)) || await mojangName(row.player);
+    if (real) setDisplayName(real, row.user_id, row.player);
+  }
+}
+
+/** Capitalize each word's first letter, after a space, slash, dash or bracket ("don't" stays). */
+export const titleCase = (s) => s.replace(/(^|[\s/(\[-])([a-z])/g, (_, pre, c) => pre + c.toUpperCase());
+
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#039': "'", '#39': "'", '#x27': "'", nbsp: ' ' };
 const cellText = (html) => html.replace(/<[^>]+>/g, ' ')
   .replace(/&(amp|lt|gt|quot|#0?39|#x27|nbsp);/g, (_, e) => ENTITIES[e]).replace(/\s+/g, ' ').trim();
@@ -169,6 +193,7 @@ export function parseBans(html) {
   }).filter((b) => b && b.at && /^\w{1,16}$/.test(b.player));
 }
 
+/** Drop legacy section-sign color codes so they can't break the chat pattern. */
 export function stripFormatting(text) {
   return String(text ?? '').replace(/§./g, '');
 }
@@ -323,6 +348,7 @@ export default class WallBot {
     this.resolveSession = resolveSession; // (userId) => BotSession | null
     this.users = new Map();               // userId -> runtime state
     this._tickTimer = setInterval(() => this._tick(), TICK_MS);
+    backfillDisplayNames(); // fire and forget: roster names in their real case
   }
 
   stopAll() {
@@ -518,10 +544,17 @@ export default class WallBot {
 
   _dispatchChat(userId, settings, player, message) {
     if (!settings?.wall_enabled) return;
+    this._rememberCase(userId, player);
     if (this._handleVerify(userId, settings, player, message)) return;
     if (this._handleReport(userId, settings, player, message)) return;
     if (this._handleRaidTriggers(userId, settings, player, message)) return;
     this._handleCheckTrigger(userId, settings, player, message);
+  }
+
+  // The server's spelling is the real case; keeps display_name current on any row this player has.
+  _rememberCase(userId, player) {
+    const spelled = this._stateFor(userId).displayNames.get(player);
+    if (spelled) setDisplayName(spelled, userId, player);
   }
 
   // Our own messages come back through chat. Without this the reminder would satisfy its own
@@ -772,6 +805,7 @@ export default class WallBot {
     const state = this._stateFor(userId);
     for (const b of fresh) {
       state.lastBanAt = Math.max(state.lastBanAt, b.at);
+      b.player = (await mojangName(b.player)) || b.player;
       this._console(userId, `ban: ${b.player} (${b.duration})`);
       await this._postDiscord(userId, webhook, '', banEmbed(b));
     }
@@ -846,6 +880,7 @@ export default class WallBot {
 
     const uuid = state.uuids.get(player) || '';
     (raid ? incRaidCheck : incWallCheck).run({ user_id: userId, player, uuid, last_check: now });
+    this._rememberCase(userId, player); // a first check just created the stats row
     state.cooldowns.set(`${kind}:${player}`, now);
     state.totalChecks += 1;
     const prev = raid ? state.lastRaidCheckAt : state.lastCheckAt;
@@ -865,8 +900,9 @@ export default class WallBot {
       const mine = allWallCheckers.all(userId).find((r) => r.player === player) || {};
       const wallChecks = mine.checks || 0;
       const raidChecks = mine.raid_checks || 0;
+      const shown = mine.display_name || state.displayNames.get(player) || player;
       const values = {
-        player,
+        player: shown,
         checks: raid ? raidChecks : wallChecks,
         total: state.totalChecks,
         minutes: Math.round(sinceLast / 60000),
@@ -877,7 +913,7 @@ export default class WallBot {
         embed: {
           color: raid ? COLOR_RAID_LOG : COLOR_LOG,
           author: {
-            name: `${player} recorded a ${raid ? 'RAID OUTPOST CHECK' : 'WALL CHECK'}.`,
+            name: `${shown} recorded a ${raid ? 'RAID OUTPOST CHECK' : 'WALL CHECK'}.`,
             icon_url: HEAD_URL(player),
           },
           fields: [
@@ -1005,10 +1041,10 @@ export default class WallBot {
       const values = {
         minutes: Math.round((now - countFrom) / 60000),
         total: state.totalChecks,
-        player: last?.player || 'nobody',
+        player: last?.display_name || last?.player || 'nobody',
         checks: last?.checks ?? 0,
         raidMinutes: Math.floor((now - state.lastRaidCheckAt) / 60000),
-        raidPlayer: lastRaid?.player || 'nobody',
+        raidPlayer: lastRaid?.display_name || lastRaid?.player || 'nobody',
         raidChecks: lastRaid?.raid_checks ?? 0,
         bot: this._botName(userId),
       };
@@ -1130,7 +1166,7 @@ export default class WallBot {
     const by = BOARD_SORTS[sort] ? sort : (BOARD_SORTS[settings.wall_board_sort] ? settings.wall_board_sort : 'total');
     const state = this._stateFor(userId);
     const rows = allWallCheckers.all(userId)
-      .map((r) => ({ ...r, player: state.displayNames.get(r.player) || r.player }));
+      .map((r) => ({ ...r, player: r.display_name || state.displayNames.get(r.player) || r.player }));
     this._postDiscord(userId, webhook, '', {
       color: COLOR_LOG,
       title: 'Wall Checks',

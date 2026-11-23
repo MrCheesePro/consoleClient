@@ -68,7 +68,7 @@ border-radius:6px;background:#c9a96e;color:#17161a;font:inherit;font-weight:600;
 // anyone else.
 const verifiedPlayers = (entry) => listWallPlayers.all(entry.userId)
   .filter((p) => p.verified && p.player !== entry.player)
-  .map((p) => p.player);
+  .map((p) => p.display_name || p.player);
 
 const formPage = (token, players) => page('Report', `
 <h1>Report</h1>
@@ -120,7 +120,7 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     if (!entry) return res.status(410).send(deadPage());
     const text = String(req.body?.text || '').trim().slice(0, REPORT_MAX_LEN);
     const picked = String(req.body?.about || '').trim().toLowerCase();
-    const about = verifiedPlayers(entry).includes(picked) ? picked : '';
+    const about = verifiedPlayers(entry).find((p) => p.toLowerCase() === picked) || '';
     // Anything but an explicit "named" stays anonymous: the safe default if the field is missing.
     const anonymous = req.body?.identity === 'named' ? 0 : 1;
     const kind = req.body?.kind === 'praise' ? 'praise' : 'report';

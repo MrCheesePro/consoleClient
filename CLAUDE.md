@@ -95,6 +95,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   But `_whisper` must reply with the name **as the server spelled it** (`state.displayNames`):
   the network's `/msg` matches case-sensitively, echoes `[me -> name]`, and silently drops a
   lowercased target.
+- `display_name` (on `wall_stats` and `wall_players`) is the real-case name, **display only**: roster,
+  leaderboard, check board/log, reminder `{player}`, report dropdown and `about`. Filled by `backfillDisplayNames` at startup (Mojang, by UUID when known), on
+  panel add, and from the server's spelling on every DM. Never compare on it; `player` is the key.
 - **Identity is the UUID**, `player` is just the last name seen. On every DM `handleChat` resolves
   the sender's UUID (tab list, else Mojang API, cached 24h) and `linkPlayerUuid` (`db.js`) renames
   their `wall_stats`/`wall_players` rows to the current name, parking anyone else's row on that

@@ -703,7 +703,7 @@ function renderWallBot() {
 
       const name = document.createElement('span');
       name.className = 'leaderboard-name';
-      name.textContent = entry.player;
+      name.textContent = entry.display_name || entry.player;
 
       const checks = document.createElement('span');
       checks.className = 'leaderboard-points';
@@ -763,7 +763,7 @@ function renderRoster() {
 
     const name = document.createElement('span');
     name.className = 'leaderboard-name';
-    name.textContent = entry.player;
+    name.textContent = entry.display_name || entry.player;
 
     const badge = document.createElement('span');
     badge.className = 'roster-badge' + (entry.verified ? ' ok' : '');

@@ -685,12 +685,12 @@ test('the check confirmation follows its own template', () => {
   try {
     const session = wb.resolveSession(USER);
     wb.handleChat(USER, session, 'AceSoft: check');
-    assert.deepEqual(drain(), ['Walls checked by acesoft [1]']);
+    assert.deepEqual(drain(), ['Walls checked by AceSoft [1]']);
 
     // A second check by the same player reports their running count.
     wb.users.get(USER).cooldowns.clear();
     wb.handleChat(USER, session, 'AceSoft: check');
-    assert.deepEqual(drain(), ['Walls checked by acesoft [2]']);
+    assert.deepEqual(drain(), ['Walls checked by AceSoft [2]']);
   } finally { wb.stopAll(); }
 });
 
@@ -846,7 +846,7 @@ test('a check posts a log embed to the logs channel', async () => {
 
     const embed = posts[0].body.embeds[0];
     assert.equal(embed.color, 0x22D3EE);
-    assert.equal(embed.author.name, 'zghostx recorded a WALL CHECK.');
+    assert.equal(embed.author.name, 'zGhostx recorded a WALL CHECK.');
     assert.match(embed.author.icon_url, /mc-heads\.net\/avatar\/zghostx/);
     assert.equal(embed.footer.text, 'noobtech');
     assert.ok(!Number.isNaN(Date.parse(embed.timestamp)));
@@ -1851,7 +1851,10 @@ znapsoftly												</a>
   assert.equal(bans[1].reason, 'Teaming & cheating');
   assert.equal(banEmbed(bans[1]).fields.find((f) => f.name === 'Duration').value, 'Permanent');
   assert.equal(banEmbed(bans[0]).fields.find((f) => f.name === 'Duration').value,
-    `30 days · ends <t:${Date.parse('2026-12-23T08:48:22Z') / 1000}:R>`);
+    `30 Days · Ends <t:${Date.parse('2026-12-23T08:48:22Z') / 1000}:R>`);
+  assert.equal(banEmbed(bans[1]).fields[0].value, '2.1.a, 2.4.a — Teaming & Cheating');
+  const { titleCase } = await import('../server/bots/WallBot.js');
+  assert.equal(titleCase("using mods/cheats (shiva) don't"), "Using Mods/Cheats (Shiva) Don't");
   const { SHIVA_RE } = await import('../server/bots/WallBot.js');
   assert.ok(SHIVA_RE.test('[SHIVA] A player was banned for blacklisted mod or client/hacking'));
   assert.ok(!SHIVA_RE.test('[Bob -> me] did shiva ban someone?'));

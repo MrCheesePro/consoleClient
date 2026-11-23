@@ -268,6 +268,13 @@ for (const table of ['wall_stats', 'wall_players']) {
   const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
   if (!cols.has('uuid')) db.exec(`ALTER TABLE ${table} ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`);
 }
+// The name as Mojang/the server spells it ("DSP_05"), for display only. `player` stays the
+// lowercased key everything compares on. '' = not resolved yet.
+for (const table of ['wall_stats', 'wall_players']) {
+  if (!new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)).has('display_name')) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`);
+  }
+}
 
 // Changing a column DEFAULT does not touch rows that already exist, so an install created before
 // the template changed would keep the old wording forever. Refresh it — but only where the stored
@@ -419,28 +426,40 @@ export const incRaidCheck = withUuid(db.prepare(`
 `));
 
 export const topWallCheckers = db.prepare(
-  `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
+  `SELECT player, display_name, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
    ORDER BY checks DESC, player ASC LIMIT 10`
 );
 // Who checked most recently. Read from the table rather than tracked in memory so the {player}
 // placeholder still resolves after a restart.
 export const lastWallChecker = db.prepare(
-  `SELECT player, checks, raid_checks FROM wall_stats WHERE user_id = ?
+  `SELECT player, display_name, checks, raid_checks FROM wall_stats WHERE user_id = ?
    ORDER BY last_check DESC LIMIT 1`
 );
 export const lastRaidChecker = db.prepare(
-  `SELECT player, checks, raid_checks FROM wall_stats WHERE user_id = ? AND last_raid_check > 0
+  `SELECT player, display_name, checks, raid_checks FROM wall_stats WHERE user_id = ? AND last_raid_check > 0
    ORDER BY last_raid_check DESC LIMIT 1`
 );
 export const allWallCheckers = db.prepare(
-  `SELECT player, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
+  `SELECT player, display_name, checks, raid_checks, last_check FROM wall_stats WHERE user_id = ?
    ORDER BY checks DESC, player ASC`
 );
 
 export const listWallPlayers = db.prepare(
-  `SELECT player, verified, label, added_at FROM wall_players WHERE user_id = ?
+  `SELECT player, display_name, verified, label, added_at FROM wall_players WHERE user_id = ?
    ORDER BY player ASC`
 );
+const _displayStmts = ['wall_stats', 'wall_players'].map((t) => db.prepare(
+  `UPDATE ${t} SET display_name = @name WHERE user_id = @user_id AND player = @player AND display_name != @name`
+));
+/** Set the real-case name on both the stats and roster rows. Returns how many rows changed. */
+export const setDisplayName = (name, user_id, player) =>
+  _displayStmts.reduce((n, s) => n + s.run({ name, user_id, player }).changes, 0);
+export const missingDisplayNames = db.prepare(`
+  SELECT user_id, player, MAX(uuid) AS uuid FROM (
+    SELECT user_id, player, uuid FROM wall_stats WHERE display_name = ''
+    UNION ALL SELECT user_id, player, uuid FROM wall_players WHERE display_name = ''
+  ) WHERE player NOT LIKE '~%' GROUP BY user_id, player
+`);
 export const getWallPlayer = db.prepare(
   `SELECT * FROM wall_players WHERE user_id = ? AND player = ?`
 );

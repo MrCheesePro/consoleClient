@@ -7,11 +7,11 @@ import {
   insertAccount, listAccounts, deleteAccount, setAccountLoad, setAllAccountsLoad,
   getAccountById, getSettings, updateSettings,
   getWallState, allWallCheckers, listWallPlayers, upsertWallPlayer, deleteWallPlayer,
-  resetWallStats,
+  resetWallStats, setDisplayName,
   listReports,
 } from './db/db.js';
 import { authenticateMicrosoft } from './auth/mcAuth.js';
-import { normalizePlayer } from './bots/WallBot.js';
+import { normalizePlayer, mojangName } from './bots/WallBot.js';
 
 const BOOL_KEYS = new Set([
   'show_chat', 'auto_reconnect', 'sneak', 'anti_afk', 'offline_mode', 'spam_enabled',
@@ -214,6 +214,10 @@ export function createApiRouter({ botManager, emitToUser }) {
     });
     botManager.wallBroadcast(userId);
     res.status(201).json(listWallPlayers.all(userId));
+    // Real capitalization arrives a moment later; the broadcast refreshes the panel.
+    mojangName(player).then((real) => {
+      if (real && setDisplayName(real, userId, player)) botManager.wallBroadcast(userId);
+    });
   });
 
   router.delete('/wall/players/:player', (req, res) => {
