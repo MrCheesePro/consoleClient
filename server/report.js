@@ -49,8 +49,7 @@ border-radius:6px;background:#c9a96e;color:#17161a;font:inherit;font-weight:600;
 
 const formPage = (token) => page('Report', `
 <h1>Report</h1>
-<p>Staff in Discord see the report without your name. The faction owner keeps a private record of
-who sent it. This link works once.</p>
+<p>The Turtle Council will read the information. This link works once.</p>
 <form method="post" action="/r/${esc(token)}">
 <label for="about">Who is this about? (optional)</label>
 <input id="about" name="about" maxlength="64" autocomplete="off">
