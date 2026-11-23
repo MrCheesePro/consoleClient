@@ -45,6 +45,12 @@ const RAID_OUTPOST_CHECK_DEFAULT = 'Raid Outpost checked by {player} [{checks}]'
 export const RAID_OUTPOST_CLAIMED_RE = /\(!\)\s+([A-Za-z0-9_]+)\s+have claimed the Raid Outpost!/i;
 export const RAID_OUTPOST_COOLDOWN_RE = /The raid outpost is now unavailable for 1 HOUR!/i;
 export const RAID_OUTPOST_STARTED_RE = /A RAID OUTPOST HAS STARTED!/i;
+// Ban feed: Shiva's (the anticheat) ban broadcast makes us read the public bans page and post bans
+// we haven't posted yet. Unanchored, like the outpost regexes, so a server prefix doesn't break it.
+export const SHIVA_RE = /\[SHIVA\]\s*A player was banned/i;
+export const BANS_URL = 'https://cosmicreborn.com/punishments/bans';
+const BAN_FETCH_DELAYS_MS = [15 * 1000, 60 * 1000, 180 * 1000]; // the site can lag the chat line
+const BAN_LOOKBACK_MS = 10 * 60 * 1000; // only bans this close to the Shiva line count as new
 export const RAID_OUTPOST_LOST_RE = /\(!\)\s+([A-Za-z0-9_]+)\s+have lost the Raid Outpost,\s+as they have held control for 12 hours!/i;
 
 // Two built-in chat parsers, selected by name from the wall_chat_pattern setting.
@@ -90,6 +96,23 @@ export const BOARD_SORTS = {
   walls: { label: 'wall checks', key: (r) => r.checks },
   raid: { label: 'raid checks', key: (r) => r.raid_checks },
 };
+export function banEmbed(b) {
+  const t = (ms, style) => `<t:${Math.floor(ms / 1000)}:${style}>`;
+  return {
+    color: COLOR_ALERT,
+    author: {
+      name: `${b.player} was banned`, icon_url: HEAD_URL(b.player),
+      url: `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(b.player)}`,
+    },
+    fields: [
+      { name: 'Reason', value: [b.rules.join(', '), b.reason].filter(Boolean).join(' — ') || 'n/a' },
+      // <t:…:R> is rendered live by each viewer's Discord, so it counts down on its own.
+      { name: 'Duration', value: b.expiresAt ? `${b.duration} · ends ${t(b.expiresAt, 'R')}` : b.duration || 'Permanent', inline: true },
+      { name: 'Banned', value: t(b.at, 'f'), inline: true },
+    ],
+  };
+}
+
 export function formatCheckBoard(rows, sort = 'total', limit = 25) {
   if (!rows.length) return 'No checks recorded yet.';
   const { key } = BOARD_SORTS[sort] || BOARD_SORTS.total;
@@ -121,6 +144,31 @@ async function fetchMojangUuid(name) {
 }
 
 /** Drop legacy section-sign color codes so they can't break the chat pattern. */
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#039': "'", '#39': "'", '#x27': "'", nbsp: ' ' };
+const cellText = (html) => html.replace(/<[^>]+>/g, ' ')
+  .replace(/&(amp|lt|gt|quot|#0?39|#x27|nbsp);/g, (_, e) => ENTITIES[e]).replace(/\s+/g, ' ').trim();
+
+/**
+ * Rows of the site's bans table, newest first: { at, player, rules, reason, duration, expiresAt }.
+ * `at`/`expiresAt` are ms from the cells' data-utc attributes; expiresAt is 0 for "Never".
+ */
+export function parseBans(html) {
+  const body = /<tbody[^>]*>([\s\S]*?)<\/tbody>/i.exec(html)?.[1] || '';
+  return body.split(/<\/tr>/i).map((row) => {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => m[1]);
+    if (cells.length < 5) return null;
+    const utc = (cell) => Date.parse(/data-utc="([^"]+)"/.exec(cell)?.[1]) || 0;
+    return {
+      at: utc(cells[0]),
+      player: cellText(cells[1]),
+      rules: [...cells[2].matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => cellText(m[1])),
+      reason: cellText(cells[2].replace(/<a[\s\S]*?<\/a>/gi, '')),
+      duration: cellText(cells[3]),
+      expiresAt: utc(cells[4]),
+    };
+  }).filter((b) => b && b.at && /^\w{1,16}$/.test(b.player));
+}
+
 export function stripFormatting(text) {
   return String(text ?? '').replace(/§./g, '');
 }
@@ -282,6 +330,7 @@ export default class WallBot {
     for (const state of this.users.values()) {
       clearInterval(state.raidTimer);
       clearTimeout(state.sendTimer);
+      clearTimeout(state.banTimer);
     }
     this.users.clear();
   }
@@ -313,6 +362,8 @@ export default class WallBot {
       uuids: new Map(),          // lowercased player -> UUID linked this session
       pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
       reportRequests: new Map(), // player -> [ts, ...] of report links issued this hour
+      banTimer: null,            // pending bans-page fetch after a Shiva line
+      lastBanAt: 0,              // newest ban already posted (site time, ms)
       queue: [],                 // pending outbound messages
       sendTimer: null,
       lastSentAt: 0,
@@ -413,6 +464,7 @@ export default class WallBot {
     if (!wallSession || wallSession !== session) return;
 
     // Server broadcasts first — they aren't player chat, so parseChatLine would drop them.
+    this._handleShiva(userId, settings, stripFormatting(text)); // no return: a DM can say "shiva"
     if (this._handleRaidOutpost(userId, settings, stripFormatting(text))) return;
 
     const parsed = parseChatLine(text, settings.wall_chat_pattern);
@@ -682,6 +734,48 @@ export default class WallBot {
     this._persist(userId, state);
     this.broadcast(userId);
     return true;
+  }
+
+  // ---- ban feed ----
+
+  _handleShiva(userId, settings, line) {
+    if (!settings.ban_discord_webhook || !SHIVA_RE.test(line)) return;
+    const state = this._stateFor(userId);
+    if (state.banTimer) return; // a fetch is already queued; it will pick this ban up too
+    // ponytail: lastBanAt is in-memory, so a restart inside the lookback window can repost a ban.
+    const since = Math.max(state.lastBanAt, Date.now() - BAN_LOOKBACK_MS);
+    const attempt = (i) => {
+      state.banTimer = setTimeout(async () => {
+        const found = await this._postNewBans(userId, since);
+        state.banTimer = null;
+        if (!found && i + 1 < BAN_FETCH_DELAYS_MS.length) attempt(i + 1);
+      }, BAN_FETCH_DELAYS_MS[i]);
+    };
+    attempt(0);
+  }
+
+  async _postNewBans(userId, since) {
+    const webhook = getSettings.get(userId)?.ban_discord_webhook;
+    if (!webhook) return true;
+    let bans;
+    try {
+      const res = await fetch(BANS_URL, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)' }, signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      bans = parseBans(await res.text());
+    } catch (e) {
+      this._error(userId, `Bans page fetch failed: ${e.message}`);
+      return false;
+    }
+    const fresh = bans.filter((b) => b.at > since).reverse(); // oldest first
+    const state = this._stateFor(userId);
+    for (const b of fresh) {
+      state.lastBanAt = Math.max(state.lastBanAt, b.at);
+      this._console(userId, `ban: ${b.player} (${b.duration})`);
+      await this._postDiscord(userId, webhook, '', banEmbed(b));
+    }
+    return fresh.length > 0;
   }
 
   // Ownership changes go to Discord only (Raid Outpost webhook, falling back to wall) — the server

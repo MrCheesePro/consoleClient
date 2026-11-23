@@ -189,6 +189,11 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `wall_require_verified`. `report_discord_webhook` **does not fall back** to the
   wall webhook (unlike every other channel): blank means reports are off, because a complaint in the
   faction-wide channel is worse than none. Posts set `allowed_mentions: { parse: [] }`.
+- **Ban feed**: any wall-bot chat line matching `SHIVA_RE` (`[SHIVA] A player was banned`) schedules
+  a fetch of `BANS_URL` (cosmicreborn.com/punishments/bans) at 15s, retrying at 60s/180s until a new
+  row shows up; `parseBans` regex-reads the table and each ban newer than `max(lastBanAt, now-10min)`
+  is posted as one embed to `ban_discord_webhook`. Blank webhook = off, no fallback. Never returns
+  early from `handleChat`. Duration shows `Permanent`, or the length plus a `<t:…:R>` countdown to the site's expiry time.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.

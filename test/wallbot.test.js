@@ -1808,3 +1808,51 @@ test('on an online-mode server a check after a name change lands on the old row'
     assert.deepEqual(rows.map((r) => [r.player, r.checks]), [['notch', 2]]);
   } finally { wb.stopAll(); }
 });
+
+// ---- ban feed ----
+
+test('parseBans reads the site bans table (verbatim markup)', async () => {
+  const { parseBans, banEmbed } = await import('../server/bots/WallBot.js');
+  const html = `<table><thead><tr><th>Date</th></tr></thead><tbody>
+<tr>
+<td>
+<span data-utc="2026-11-23T08:48:22+00:00">Nov 23, 2026 8:48 AM</span>
+<small class="d-block text-muted" data-utc-relative="2026-11-23T08:48:22+00:00">24 minutes ago</small>
+</td>
+<td>
+<a href="/punishments/lookup?search=znapsoftly">
+<img src="https://minotar.net/helm/znapsoftly/24.png" width="24" height="24" class="rounded-2 me-1">
+znapsoftly												</a>
+</td>
+<td style="word-wrap: break-word; max-width: 250px">
+<a href="/rules#section-2-1-a" target="_blank" rel="noopener noreferrer" class="badge text-white bg-secondary">2.1.a</a> Using modifications/cheats that provide an unfair advantage is prohibited. (Shiva)											</td>
+<td>
+30 days																							</td>
+<td>
+<span data-utc="2026-12-23T08:48:22+00:00">Dec 23, 2026 8:48 AM</span>
+</td>
+</tr>
+<tr>
+<td><span data-utc="2026-11-22T06:54:00+00:00">x</span></td>
+<td><a href="#">Gaeey</a></td>
+<td><a href="#">2.1.a</a><a href="#">2.4.a</a> Teaming &amp; cheating</td>
+<td>Permanent</td>
+<td>Never</td>
+</tr>
+</tbody></table>`;
+  const bans = parseBans(html);
+  assert.equal(bans.length, 2);
+  assert.deepEqual(bans[0], {
+    at: Date.parse('2026-11-23T08:48:22Z'), player: 'znapsoftly', rules: ['2.1.a'],
+    reason: 'Using modifications/cheats that provide an unfair advantage is prohibited. (Shiva)',
+    duration: '30 days', expiresAt: Date.parse('2026-12-23T08:48:22Z'),
+  });
+  assert.deepEqual(bans[1].rules, ['2.1.a', '2.4.a']);
+  assert.equal(bans[1].reason, 'Teaming & cheating');
+  assert.equal(banEmbed(bans[1]).fields.find((f) => f.name === 'Duration').value, 'Permanent');
+  assert.equal(banEmbed(bans[0]).fields.find((f) => f.name === 'Duration').value,
+    `30 days · ends <t:${Date.parse('2026-12-23T08:48:22Z') / 1000}:R>`);
+  const { SHIVA_RE } = await import('../server/bots/WallBot.js');
+  assert.ok(SHIVA_RE.test('[SHIVA] A player was banned for blacklisted mod or client/hacking'));
+  assert.ok(!SHIVA_RE.test('[Bob -> me] did shiva ban someone?'));
+});
