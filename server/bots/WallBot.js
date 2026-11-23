@@ -487,6 +487,10 @@ export default class WallBot {
       this._notifyOnce(userId, player, 'Anonymous reports are not set up.');
       return true;
     }
+    if (!settings.reports_enabled) {
+      this._notifyOnce(userId, player, 'Reports are turned off right now.');
+      return true;
+    }
     if (!this._requireAuthorized(userId, settings, player)) return true;
 
     const state = this._stateFor(userId);

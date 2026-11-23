@@ -78,10 +78,12 @@ export function createReportRouter({ post = postToDiscord, emitToUser = () => {}
     const about = String(req.body?.about || '').trim().slice(0, 64);
     if (!text) return res.status(400).send(formPage(token));
 
-    const webhook = getSettings.get(entry.userId)?.report_discord_webhook;
+    const settings = getSettings.get(entry.userId);
+    const webhook = settings?.report_discord_webhook;
     // Fails shut: unlike the other channels, never fall back to the wall webhook — a complaint
-    // landing in the faction-wide channel is worse than it not sending.
-    if (!webhook) return res.status(503).send(page('Unavailable', '<h1>Reports are turned off right now.</h1>'));
+    // landing in the faction-wide channel is worse than it not sending. The panel's off switch
+    // also closes links that were already handed out.
+    if (!webhook || !settings.reports_enabled) return res.status(503).send(page('Unavailable', '<h1>Reports are turned off right now.</h1>'));
 
     // Consume first so a double-submit can't file twice. The ticket is saved before Discord is
     // tried, so a dead webhook never loses a report — it is still in the panel.

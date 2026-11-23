@@ -6,7 +6,7 @@ Guidance for working in this repo. Keep it current when structure or conventions
 
 A single-page web control panel for running Minecraft AFK bots via
 [mineflayer](https://github.com/PrismarineJS/mineflayer). Node/Express backend + a
-vanilla-JS SPA. Three-panel UI: **Accounts · Settings · Console**. State lives in a
+vanilla-JS SPA. UI views: **Accounts · Wall Bot · Console · Reports · Settings**. State lives in a
 local SQLite file; bot chat/status stream to the browser over one WebSocket.
 
 ## Commands
@@ -166,7 +166,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   player per hour). `/r` is mounted **outside** `requireAuth` on purpose. A submission is saved to the
   `reports` table first (its `id` is the ticket number, sender included) and streamed to the panel as
   `reportFiled`; the Discord post carries the ticket number but **never the sender** — keep that split.
-  The panel lists them via `GET /api/reports`. `report_discord_webhook` **does not fall back** to the
+  The panel lists them via `GET /api/reports` in its own **Reports** view (tickets are native
+  `<details>`). `reports_enabled` (default on) is the panel off switch: off, the bot refuses `report`
+  **and** `POST /r/:token` refuses links already handed out. `report_discord_webhook` **does not fall back** to the
   wall webhook (unlike every other channel): blank means reports are off, because a complaint in the
   faction-wide channel is worse than none. Posts set `allowed_mentions: { parse: [] }`.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the

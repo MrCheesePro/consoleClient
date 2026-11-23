@@ -1708,3 +1708,15 @@ test('report: one-time link files a numbered ticket; panel gets the sender, Disc
   assert.ok(consoleLines.some((l) => l.includes('Too many report links')));
   } finally { wb.stopAll(); delete process.env.PUBLIC_URL; }
 });
+
+test('report: panel toggle off refuses the link', () => {
+  process.env.PUBLIC_URL = 'https://report.example.com';
+  const { wb, session } = harness({ wall_require_verified: 0, report_discord_webhook: 'https://discord.test/hook', reports_enabled: 0 });
+  const lines = [];
+  wb.emitToUser = (_u, m) => { if (m.type === 'consoleLine') lines.push(m.text); };
+  try {
+    wb.handleChat(USER, session, 'Snitch: report');
+    assert.ok(!lines.some((l) => l.includes('/r/')), 'no link handed out');
+    assert.ok(lines.some((l) => l.includes('Reports are turned off')));
+  } finally { wb.stopAll(); delete process.env.PUBLIC_URL; db.updateSettings(USER, { reports_enabled: 1 }); }
+});

@@ -39,7 +39,8 @@
         <button class="tab" data-view="bots" aria-selected="true"><span class="num" aria-hidden="true">一</span><span>Accounts</span></button>
         <button class="tab" data-view="wall" aria-selected="false"><span class="num" aria-hidden="true">二</span><span>Wall Bot</span></button>
         <button class="tab" data-view="console" aria-selected="false"><span class="num" aria-hidden="true">三</span><span>Console</span></button>
-        <button class="tab" data-view="settings" aria-selected="false"><span class="num" aria-hidden="true">四</span><span>Settings</span></button>
+        <button class="tab" data-view="reports" aria-selected="false"><span class="num" aria-hidden="true">四</span><span>Reports</span></button>
+        <button class="tab" data-view="settings" aria-selected="false"><span class="num" aria-hidden="true">五</span><span>Settings</span></button>
       </nav>
       <div class="topbar-end">
         <div class="conn">
@@ -101,9 +102,17 @@
         </div>
       </section>
 
+      <section class="vh" data-for="reports">
+        <div class="vh-text">
+          <p class="kicker">四 · Reports</p>
+          <h2 class="vh-title">Reports</h2>
+          <p class="vh-sentence">Players message the bot <b>report</b> for a one-time form link. Discord gets the ticket without the sender; only this page shows who sent it.</p>
+        </div>
+      </section>
+
       <section class="vh" data-for="settings">
         <div class="vh-text">
-          <p class="kicker">四 · Settings</p>
+          <p class="kicker">五 · Settings</p>
           <h2 class="vh-title">Settings</h2>
           <p class="vh-sentence">How the bots connect, what they do while you're away, and where they report.</p>
         </div>
@@ -500,10 +509,6 @@
                         <label class="field-label">Raid Outpost claimed/lost webhook</label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
                       </div>
-                      <div class="field span-full">
-                        <label class="field-label">Anonymous reports webhook <span class="label-sub">Private staff channel. Blank turns reports off; never falls back.</span></label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="report_discord_webhook" />
-                      </div>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -555,12 +560,6 @@
                     </div>
                   </div>
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Reports <span id="reports-count" class="card-meta">0</span></h4><p>Players message the bot <code>report</code> for a one-time form link. Discord gets the ticket without the sender; only this list shows who sent it.</p></div>
-                    <div class="ledger-fields">
-                      <div id="reports-list" class="data-list"></div>
-                    </div>
-                  </div>
-                  <div class="ledger-row">
                     <div class="ledger-meta"><h4>Verification</h4><p>Let players add themselves with the faction password.</p></div>
                     <div class="ledger-fields form-grid">
                       <label class="toggle-row"><button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button><span>Require verification</span></label>
@@ -607,6 +606,28 @@
             <input id="spam-delay" class="text-input spam-delay" type="number" placeholder="Delay (ms)" data-setting="spam_delay_ms" />
             <label class="toggle-row"><button class="toggle" data-setting="spam_enabled" aria-pressed="false"></button><span>Spam</span></label>
             <button id="clear-console" class="btn btn-pill">Clear console</button>
+          </div>
+        </div>
+
+        <!-- ============ Reports ============ -->
+        <div id="view-reports" class="view hidden">
+          <div class="ledger">
+            <div class="ledger-row">
+              <div class="ledger-meta"><h4>Setup</h4><p>Off, the bot refuses <code>report</code> and links already handed out stop working.</p></div>
+              <div class="ledger-fields form-grid">
+                <label class="toggle-row span-full"><button class="toggle" data-setting="reports_enabled" aria-pressed="false"></button><span>Players can message the bot <code>report</code></span></label>
+                <div class="field span-full">
+                  <label class="field-label">Reports webhook URL <span class="label-sub">Private staff channel. Blank turns reports off; never falls back.</span></label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="report_discord_webhook" />
+                </div>
+              </div>
+            </div>
+            <div class="ledger-row">
+              <div class="ledger-meta"><h4>Tickets <span id="reports-count" class="card-meta">0</span></h4><p>Newest first. Click a ticket to open it.</p></div>
+              <div class="ledger-fields">
+                <div id="reports-list" class="data-list"></div>
+              </div>
+            </div>
           </div>
         </div>
 

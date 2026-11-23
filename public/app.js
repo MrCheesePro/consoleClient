@@ -62,17 +62,19 @@ async function showApp() {
 // Both views live in the same document; only their visibility changes, so one WebSocket and
 // one copy of the render code serve both. The hash is the single source of truth for which
 // view is active — tabs set it, and the hashchange handler does the switching.
-const VIEWS = ['bots', 'wall', 'console', 'settings'];
+const VIEWS = ['bots', 'wall', 'console', 'reports', 'settings'];
 const VIEW_TITLES = {
   bots: 'Accounts',
   wall: 'Wall Bot',
   console: 'Console',
+  reports: 'Reports',
   settings: 'Settings',
 };
 const VIEW_SUBS = {
   bots: 'Bot identities, load state, and connection control.',
   wall: 'Wall check tracking, player verification, Raid Outpost and weewoo alerts.',
   console: 'Multi-bot terminal and chat broadcast.',
+  reports: 'Anonymous player reports and where they go.',
   settings: 'Connection routing, login macros, and automation behavior.',
 };
 // Console and Settings want the full width; the status rail only belongs beside the other two.
@@ -727,9 +729,10 @@ function renderReports() {
     return;
   }
   for (const r of reports) {
-    const row = document.createElement('div');
+    // Native <details>: each ticket opens and closes on its own, no JS state to keep.
+    const row = document.createElement('details');
     row.className = 'report-row';
-    const head = document.createElement('div');
+    const head = document.createElement('summary');
     head.className = 'report-head';
     const when = new Date(r.created_at).toLocaleString([], { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     head.textContent = `#${r.id} · from ${r.player}${r.about ? ` · about ${r.about}` : ''} · ${when}`;
