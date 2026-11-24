@@ -1,5 +1,5 @@
 import BotSession from './BotSession.js';
-import WallBot, { stripFormatting } from './WallBot.js';
+import WallBot, { stripFormatting, parseTaxAmount, parseTaxDuration } from './WallBot.js';
 import {
   getSettings, listAccounts, getAccountById, getLeaderboard, upsertLeaderboard,
 } from '../db/db.js';
@@ -336,6 +336,15 @@ export default class BotManager {
   wallBroadcast(userId) { this.wallBot.broadcast(userId); }
   wallReload(userId) { this.wallBot.reload(userId); }
   postCheckBoard(userId, sort) { this.wallBot.postCheckBoard(userId, sort); }
+  taxStart(userId, amount, duration) {
+    const a = parseTaxAmount(amount);
+    const d = parseTaxDuration(duration);
+    if (!a || !d) return this.wallBot._error(userId, 'Tax: enter an amount like 5m and a time like 24hr.');
+    this.wallBot.startTax(userId, a, d, 'panel');
+  }
+  taxEnd(userId) { this.wallBot.endTax(userId); }
+  taxConfirm(userId, player) { this.wallBot.confirmTax(userId, player); }
+  taxDeny(userId, player) { this.wallBot.denyTax(userId, player); }
 
   // When the leaderboard bot itself comes online, do one delayed refresh (debounced per user) so
   // the board populates soon after connecting instead of waiting for the next hourly tick. Any

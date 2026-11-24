@@ -535,6 +535,14 @@
                         <label class="field-label">Ban feed webhook <span class="label-sub">Posts bans from the site when Shiva announces one. Blank = off.</span></label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
                       </div>
+                      <div class="field span-full">
+                        <label class="field-label">Tax announcements webhook <span class="label-sub">Start, 12h reminders, overdue. Blank = wall webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_discord_webhook" />
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Tax log webhook (#tax) <span class="label-sub">Waiting on confirmation / accepted / denied. Blank = tax announcements webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_log_discord_webhook" />
+                      </div>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -583,6 +591,30 @@
                         <button id="roster-add" class="icon-btn" title="Add authorized player" aria-label="Add authorized player">＋</button>
                       </div>
                       <div id="roster-list" class="data-list"></div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Tax <span id="tax-meta" class="card-meta">none</span></h4>
+                      <p>Tag payers with <b>tax</b> and collectors with <b>admin</b> in the roster. Admins can start one in game:
+                        <code>tax 5m 24hr</code>, <code>pending</code>, <code>confirm &lt;name&gt;</code>, <code>deny &lt;name&gt;</code>, <code>tax end</code>.
+                        Payers message <code>paid</code> after depositing to the f bank.</p></div>
+                    <div class="ledger-fields">
+                      <div id="tax-start-form" class="account-inputs">
+                        <div class="input-group">
+                          <label class="field-label" for="tax-amount">Amount</label>
+                          <input id="tax-amount" class="text-input" placeholder="5m" />
+                        </div>
+                        <div class="input-group">
+                          <label class="field-label" for="tax-duration">Due in</label>
+                          <input id="tax-duration" class="text-input" placeholder="24hr" />
+                        </div>
+                        <button id="tax-start" class="btn btn-green">Start tax</button>
+                      </div>
+                      <div id="tax-running" class="account-inputs" hidden>
+                        <span id="tax-summary" class="leaderboard-name"></span>
+                        <button id="tax-end" class="btn btn-night">End tax</button>
+                      </div>
+                      <div id="tax-list" class="data-list"></div>
                     </div>
                   </div>
                   <div class="ledger-row">

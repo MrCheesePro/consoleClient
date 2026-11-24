@@ -3,6 +3,7 @@ import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, setDisplayName, missingDisplayNames, lastWallChecker, lastRaidChecker, linkPlayerUuid,
+  setTaxStatus, resetTaxStatuses, saveTax, setTaxReminderAt, clearTax, DEFAULT_USER_ID,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
   RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
@@ -16,6 +17,7 @@ const COLOR_LOG = 0x22D3EE;   // cyan — the check log (walls)
 const COLOR_RAID_LOG = 0x9B59B6; // purple — the check log (Raid Outpost)
 const COLOR_BOARD = 0xF1C40F; // gold — the factions leaderboard
 const COLOR_MATCH = 0xFF5FA2; // pink — a "find me" match card
+const COLOR_TAX = 0x2ECC71;   // money green — tax announcements
 
 // Player head for the log embed's author line. Discord fetches this itself, so the player's name
 // reaches a third-party skin service rather than us calling out. Blank the constant to drop it.
@@ -36,6 +38,9 @@ const REPORT_MAX_PER_HOUR = 3;         // report links one player can request pe
 const MATCH_MAX_PER_HOUR = 5;          // "find me" cards one player can request per hour
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
+const TAX_REMINDER_MS = 12 * HOUR_MS;  // how often a running tax re-pings whoever hasn't paid
+const TAX_MIN_MS = 60 * 1000;
+const TAX_MAX_MS = 30 * 24 * HOUR_MS;
 
 const UUID_CACHE_MS = 24 * 60 * 60 * 1000; // how long a name -> UUID answer from Mojang is trusted
 const UUID_LOOKUP_TIMEOUT_MS = 3000;
@@ -843,6 +848,27 @@ export function parseRoleId(value) {
   return m ? m[1] : null;
 }
 
+/** "5m" / "500k" / "1.5b" / "$5,000,000" -> whole dollars, or null. */
+export function parseTaxAmount(value) {
+  const m = /^\$?(\d+(?:\.\d+)?)\s*([kmb])?$/i.exec(String(value ?? '').replace(/,/g, '').trim());
+  if (!m) return null;
+  const n = Math.round(Number(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9 }[m[2]?.toLowerCase()] || 1));
+  return n > 0 && Number.isSafeInteger(n) ? n : null;
+}
+
+/** "24hr" / "12h" / "2d" / "90m" -> ms, or null. A bare number is hours. 1 minute to 30 days. */
+export function parseTaxDuration(value) {
+  const m = /^(\d+(?:\.\d+)?)\s*(m|mins?|minutes?|h|hrs?|hours?|d|days?)?$/i.exec(String(value ?? '').trim());
+  if (!m) return null;
+  const unit = (m[2] || 'h')[0].toLowerCase();
+  const ms = Math.round(Number(m[1]) * { m: 60000, h: HOUR_MS, d: 24 * HOUR_MS }[unit]);
+  return ms >= TAX_MIN_MS && ms <= TAX_MAX_MS ? ms : null;
+}
+
+export function formatMoney(n) {
+  return `$${Number(n).toLocaleString('en-US')}`;
+}
+
 /** Six-digit confirmation code. randomInt, not Math.random — this is a credential. */
 export function generateCode() {
   return String(crypto.randomInt(100000, 1000000));
@@ -871,6 +897,7 @@ export default class WallBot {
     this.resolveSession = resolveSession; // (userId) => BotSession | null
     this.users = new Map();               // userId -> runtime state
     this._tickTimer = setInterval(() => this._tick(), TICK_MS);
+    this._stateFor(DEFAULT_USER_ID); // so _tick sees a persisted tax right after a restart
     backfillDisplayNames(); // fire and forget: roster names in their real case
   }
 
@@ -1072,6 +1099,7 @@ export default class WallBot {
     if (this._handleVerify(userId, settings, player, message)) return;
     if (this._handleReport(userId, settings, player, message)) return;
     if (this._handleMatch(userId, settings, player, message)) return;
+    if (this._handleTax(userId, settings, player, message)) return;
     if (this._handleRaidTriggers(userId, settings, player, message)) return;
     this._handleCheckTrigger(userId, settings, player, message);
   }
@@ -1261,6 +1289,247 @@ export default class WallBot {
       thumbnail: { url: HEAD_URL(shown) },
     });
     this._console(userId, `Posted a "find me" card for ${player}: ${query}`);
+  }
+
+  // ---- tax ----
+  // The bot is an alt and can't receive /pay, so payment is claim + confirm: a player deposits to
+  // the main f bank, whispers `paid`, and a tax admin confirms it (in game or in the panel).
+
+  _taxRow(userId) {
+    const row = getWallState.get(userId);
+    return row?.tax_due_at ? row : null;
+  }
+
+  _taxPlayers(userId) {
+    return listWallPlayers.all(userId).filter((r) => r.tax);
+  }
+
+  _shown(userId, row) {
+    return row.display_name || this._stateFor(userId).displayNames.get(row.player) || row.player;
+  }
+
+  /** `confirm <x>`: x is the IGN, or the nickname `pending` showed. Nicknames are unique (api.js). */
+  _resolveTaxTarget(userId, arg) {
+    const key = normalizePlayer(arg);
+    if (!key) return null;
+    const direct = getWallPlayer.get(userId, key);
+    if (direct?.tax) return direct;
+    return this._taxPlayers(userId).find((r) => r.label.toLowerCase() === key) || null;
+  }
+
+  _handleTax(userId, settings, player, message) {
+    const text = message.trim();
+    const m = /^(tax|paid|pending|confirm|deny)\b\s*(.*)$/i.exec(text);
+    if (!m) return false;
+    const cmd = m[1].toLowerCase();
+    const args = m[2].trim().split(/\s+/).filter((w) => /\w/.test(w));
+    const me = getWallPlayer.get(userId, player);
+    const admin = !!me?.tax_admin;
+    const tax = this._taxRow(userId);
+
+    if (cmd === 'paid') {
+      if (args.length) return false; // "paid 5 for that" in a DM isn't a tax claim
+      if (!tax) { this._whisper(userId, player, 'No tax is running.'); return true; }
+      if (!me?.tax) { this._whisper(userId, player, "You're not on the tax list."); return true; }
+      if (me.tax_status === 'paid') { this._whisper(userId, player, 'You already paid this tax.'); return true; }
+      if (me.tax_status === 'claimed') { this._whisper(userId, player, 'Still waiting for the IRS to confirm.'); return true; }
+      setTaxStatus.run('claimed', userId, player);
+      this._whisper(userId, player, 'Got it. waiting for the IRS to confirm.');
+      const shown = this._shown(userId, me);
+      this._taxLog(userId, settings, `${shown} is waiting on confirmation`);
+      this._console(userId, `${shown} says they paid tax; waiting on confirmation.`);
+      // The starter hears about it if they're still an admin; otherwise every tax admin does.
+      const admins = listWallPlayers.all(userId).filter((r) => r.tax_admin);
+      const starter = admins.find((r) => r.player === tax.tax_started_by);
+      for (const a of starter ? [starter] : admins) {
+        this._whisper(userId, a.player, `${shown} paid? confirm ${shown} / deny ${shown}`);
+      }
+      this.broadcast(userId);
+      return true;
+    }
+
+    if (cmd === 'tax' && (!args.length || args[0].toLowerCase() === 'status')) {
+      if (!tax) { this._whisper(userId, player, 'No tax is running.'); return true; }
+      if (!me?.tax && !admin) return true;
+      const hours = Math.max(0, Math.ceil((tax.tax_due_at - Date.now()) / HOUR_MS));
+      const status = !me?.tax ? '' : ` You: ${me.tax_status === 'paid' ? 'paid' : me.tax_status === 'claimed' ? 'awaiting confirmation' : 'not paid'}.`;
+      this._whisper(userId, player, `Tax: ${formatMoney(tax.tax_amount)}, due in ${hours}h.${status}`);
+      return true;
+    }
+
+    // Everything below is admin-only. Non-admins get no reply, so the commands aren't advertised.
+    if (!admin) {
+      this._console(userId, `Ignored "${cmd}" from ${player}: not a tax admin.`);
+      return true;
+    }
+
+    if (cmd === 'pending' || (cmd === 'tax' && args[0].toLowerCase() === 'pending')) {
+      // The one place nicknames show: this list can run long. Everything else uses the IGN.
+      const waiting = this._taxPlayers(userId).filter((r) => r.tax_status === 'claimed')
+        .map((r) => r.label || this._shown(userId, r));
+      if (!waiting.length) { this._whisper(userId, player, 'Nobody is waiting on confirmation.'); return true; }
+      // Nicknames, comma-only separators, packed to the chat limit: the whole
+      // `/msg <admin> ...` line must fit in 100 characters. Only a list that still overflows splits.
+      const cmdLen = String(settings.wall_msg_command || '/msg').trim().length;
+      const room = 100 - cmdLen - 2 - this._shown(userId, me).length;
+      const head = `Waiting (${waiting.length}):`;
+      let line = head;
+      for (const name of waiting) {
+        if (line !== head && line.length + name.length + 1 > room) { this._whisper(userId, player, line); line = '+'; }
+        line += `${line === head || line === '+' ? ' ' : ','}${name}`;
+      }
+      this._whisper(userId, player, line);
+      return true;
+    }
+
+    if (cmd === 'tax' && args[0].toLowerCase() === 'end') {
+      if (!tax) { this._whisper(userId, player, 'No tax is running.'); return true; }
+      this.endTax(userId, this._shown(userId, me));
+      this._whisper(userId, player, 'Tax ended.');
+      return true;
+    }
+
+    if (cmd === 'tax') {
+      if (tax) { this._whisper(userId, player, 'Error: Ongoing Tax'); return true; }
+      const amount = parseTaxAmount(args[0]);
+      const duration = parseTaxDuration(args.slice(1).join(''));
+      if (!amount || !duration) { this._whisper(userId, player, 'Usage: tax <amount> <time>, e.g. tax 5m 24hr'); return true; }
+      this._whisper(userId, player, 'Starting tax collection.');
+      this.startTax(userId, amount, duration, player);
+      return true;
+    }
+
+    // confirm / deny <player>
+    const row = this._resolveTaxTarget(userId, args[0]);
+    const target = row?.player;
+    if (!row?.tax) { this._whisper(userId, player, `Usage: ${cmd} <player on the tax list>`); return true; }
+    if (cmd === 'confirm') this.confirmTax(userId, target, this._shown(userId, me));
+    else this.denyTax(userId, target, this._shown(userId, me));
+    this._whisper(userId, player, `${cmd === 'confirm' ? 'Confirmed' : 'Denied'} ${this._shown(userId, row)}.`);
+    return true;
+  }
+
+  /** Start a tax. Returns false when one is already running. `by` is a player key or 'panel'. */
+  startTax(userId, amount, durationMs, by = 'panel') {
+    if (this._taxRow(userId)) {
+      this._error(userId, 'Error: Ongoing Tax');
+      return false;
+    }
+    const now = Date.now();
+    resetTaxStatuses.run(userId); // a new tax puts everyone back to not paid
+    saveTax.run({
+      user_id: userId, tax_amount: amount, tax_started_at: now, tax_due_at: now + durationMs,
+      tax_last_reminder_at: now, tax_started_by: by,
+    });
+    const tax = this._taxRow(userId);
+    const starter = by === 'panel' ? 'the panel' : (this._stateFor(userId).displayNames.get(by) || by);
+    this._console(userId, `Tax of ${formatMoney(amount)} started by ${starter}, due in ${formatDuration(durationMs)}.`);
+    this._postTax(userId, tax, 'start', this._taxPlayers(userId), `Started by ${starter}`);
+    this.broadcast(userId);
+    return true;
+  }
+
+  endTax(userId, by = 'the panel') {
+    const tax = this._taxRow(userId);
+    if (!tax) return;
+    clearTax.run(userId);
+    this._console(userId, `Tax ended early by ${by}.`);
+    this._postTax(userId, tax, 'end', [], `Ended early by ${by}`);
+    this.broadcast(userId);
+  }
+
+  confirmTax(userId, player, by = 'panel') {
+    const row = getWallPlayer.get(userId, normalizePlayer(player));
+    if (!row?.tax) return;
+    setTaxStatus.run('paid', userId, row.player);
+    const shown = this._shown(userId, row);
+    this._whisper(userId, row.player, 'Your tax payment was confirmed.');
+    this._taxLog(userId, getSettings.get(userId), `${shown}'s payment accepted by ${by}`);
+    this._console(userId, `${shown}'s tax payment accepted by ${by}.`);
+    this.broadcast(userId);
+  }
+
+  denyTax(userId, player, by = 'panel') {
+    const row = getWallPlayer.get(userId, normalizePlayer(player));
+    if (!row?.tax) return;
+    setTaxStatus.run('', userId, row.player);
+    const shown = this._shown(userId, row);
+    this._whisper(userId, row.player, 'Your tax payment wasn\'t confirmed. Pay and message me "paid" again.');
+    this._taxLog(userId, getSettings.get(userId), `${shown}'s payment denied by ${by}`);
+    this._console(userId, `${shown}'s tax payment denied by ${by}.`);
+    this.broadcast(userId);
+  }
+
+  // Every tick, whether or not wall checks are running: 12h reminders, then the overdue post at due.
+  _taxTick(userId) {
+    const tax = this._taxRow(userId);
+    if (!tax) return;
+    const now = Date.now();
+    if (now >= tax.tax_due_at) {
+      clearTax.run(userId);
+      const owing = this._taxPlayers(userId).filter((r) => r.tax_status !== 'paid');
+      this._console(userId, `Tax is due. ${owing.length} player${owing.length === 1 ? '' : 's'} didn't pay.`);
+      this._postTax(userId, tax, 'overdue', owing);
+      this.broadcast(userId);
+      return;
+    }
+    if (now - tax.tax_last_reminder_at < TAX_REMINDER_MS) return;
+    setTaxReminderAt.run(now, userId);
+    this._postTax(userId, tax, 'reminder', this._taxPlayers(userId).filter((r) => r.tax_status === ''));
+  }
+
+  /** Announcement in the tax channel. `ping` is the roster rows to @mention by Discord ID. */
+  _postTax(userId, tax, kind, ping, footer = '') {
+    const settings = getSettings.get(userId);
+    const webhook = settings?.tax_discord_webhook || settings?.wall_discord_webhook;
+    if (!webhook) return;
+    const all = this._taxPlayers(userId);
+    const names = (rows) => rows.map((r) => this._shown(userId, r)).join(', ') || 'nobody';
+    const due = Math.floor(tax.tax_due_at / 1000);
+    const hoursLeft = Math.max(0, Math.ceil((tax.tax_due_at - Date.now()) / HOUR_MS));
+    const paid = all.filter((r) => r.tax_status === 'paid').length;
+    const claimed = all.filter((r) => r.tax_status === 'claimed');
+    const unlinked = ping.filter((r) => !r.discord_id);
+    const howTo = 'Deposit to the f bank, then `/msg ' + this._botName(userId) + ' paid`.';
+    const embed = {
+      start: {
+        title: '💰 Tax collection started',
+        description: `Everyone on the tax list owes **${formatMoney(tax.tax_amount)}**.\nDue <t:${due}:F> (<t:${due}:R>).\n${howTo}`,
+        fields: [{ name: 'Taxed', value: names(all) }],
+      },
+      reminder: {
+        title: `⏰ Tax reminder: ${hoursLeft}h left`,
+        description: `**${formatMoney(tax.tax_amount)}** due <t:${due}:R>.\n${howTo}`,
+        fields: [
+          { name: 'Not paid', value: names(ping) },
+          ...(claimed.length ? [{ name: 'Awaiting confirmation', value: names(claimed) }] : []),
+          { name: 'Paid', value: `${paid}/${all.length}`, inline: true },
+        ],
+      },
+      overdue: {
+        title: '🚨 Tax overdue',
+        description: `The ${formatMoney(tax.tax_amount)} tax was due <t:${due}:R>.`,
+        fields: [
+          { name: 'Did not pay', value: names(ping) },
+          { name: 'Paid', value: `${paid}/${all.length}`, inline: true },
+        ],
+      },
+      end: {
+        title: 'Tax ended',
+        description: `The ${formatMoney(tax.tax_amount)} tax was ended early. ${paid}/${all.length} paid.`,
+      },
+    }[kind];
+    if (unlinked.length && kind !== 'end') embed.fields.push({ name: 'No Discord linked', value: names(unlinked) });
+    if (footer) embed.footer = { text: footer };
+    const ids = ping.map((r) => r.discord_id).filter(Boolean);
+    this._postDiscord(userId, webhook, '', { color: COLOR_TAX, ...embed }, null, ids);
+  }
+
+  /** One plain code-block line in the #tax log channel. No embed, no pings. */
+  _taxLog(userId, settings, line) {
+    const webhook = settings?.tax_log_discord_webhook || settings?.tax_discord_webhook || settings?.wall_discord_webhook;
+    if (!webhook) return;
+    this._postDiscord(userId, webhook, '```\n' + line.replace(/`/g, "'") + '\n```');
   }
 
   _handleRaidTriggers(userId, settings, player, message) {
@@ -1575,6 +1844,7 @@ export default class WallBot {
 
   _tick() {
     for (const [userId, state] of this.users) {
+      this._taxTick(userId);
       if (!state.wallActive || state.raidActive) continue;
       const settings = getSettings.get(userId);
       if (!settings?.wall_enabled) continue;
@@ -1824,7 +2094,7 @@ export default class WallBot {
     }, wait);
   }
 
-  async _postDiscord(userId, webhook, text, embed = null, pingRole = null) {
+  async _postDiscord(userId, webhook, text, embed = null, pingRole = null, pingUsers = []) {
     // An embed gives the message a coloured bar, a bold title and a rendered timestamp. Without
     // one we fall back to a plain content post, so nothing depends on the embed being supplied.
     let body;
@@ -1844,6 +2114,11 @@ export default class WallBot {
     if (pingRole) {
       body.content = `<@&${pingRole}>${body.content ? ` ${body.content}` : ''}`;
       body.allowed_mentions = { roles: [pingRole] };
+    } else if (pingUsers.length) {
+      // ponytail: Discord caps allowed_mentions.users at 100; chunk the post if a tax list outgrows it.
+      const ids = pingUsers.slice(0, 100);
+      body.content = `${ids.map((id) => `<@${id}>`).join(' ')}${body.content ? ` ${body.content}` : ''}`;
+      body.allowed_mentions = { users: ids };
     }
     try {
       const res = await fetch(webhook, {
@@ -1909,6 +2184,8 @@ export default class WallBot {
       lastRaidCheckAt: state.lastRaidCheckAt,
       top: topWallCheckers.all(userId),
       roster: listWallPlayers.all(userId),
+      tax: (({ tax_amount: amount, tax_started_at: startedAt, tax_due_at: dueAt, tax_started_by: startedBy } = {}) => (
+        dueAt ? { amount, startedAt, dueAt, startedBy } : null))(this._taxRow(userId) || {}),
       accountOnline: !!this.resolveSession(userId),
     };
   }

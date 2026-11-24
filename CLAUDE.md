@@ -206,6 +206,19 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   The **Matches** view holds both settings and a preview
   card from `GET /api/match/preview` (same `parseMatchQuery`/`MINOR_RE`/`buildMatchProfile` as the bot,
   never posts). Never scrape, link or picture real people — that was asked for and refused on purpose.
+- **Tax**: roster players tagged `tax` (payers) / `tax_admin` (collectors), with `discord_id` for
+  pings, all columns on `wall_players` so a UUID rename carries them. The running tax lives in
+  `wall_state` (`tax_due_at = 0` = none). Admins whisper `tax 5m 24hr` (`Error: Ongoing Tax` if one runs),
+  `pending`, `confirm|deny <name>`, `tax end`; the panel does the same over WS (`taxStart/End/Confirm/Deny`).
+  The bot is an alt and **can't receive /pay**, so payment is claim + confirm: `paid` sets `tax_status`
+  `claimed` and whispers the starting admin (else all admins); only an admin sets `paid`. A new tax resets
+  everyone to `''`. The roster nickname (`label`, panel only, no guessing) shows **only** in
+  the `pending` list, packed to the 100-char `/msg` limit (splits only when it must); every other
+  message, post and log uses the IGN. `confirm`/`deny` accept either. `PATCH /api/wall/players`
+  rejects a nickname that's another player's nickname or IGN, so it always resolves to one player. `_taxTick` runs on every tick **outside** the `wallActive` gate: every 12h it re-pings
+  only `''` players, and at due posts the overdue list and clears the tax. Announcements (embeds, user
+  pings) → `tax_discord_webhook`, else wall webhook. The #tax log (claimed/accepted/denied) is a plain
+  code-block `content` post, never an embed → `tax_log_discord_webhook`, else tax, else wall.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.

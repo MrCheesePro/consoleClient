@@ -1896,3 +1896,135 @@ test('find me: parses the ask, refuses minors, keeps ages 21+', () => {
   }
   assert.notEqual(buildMatchProfile('goth', last).prompts[0][1], buildMatchProfile('goth', last, true).prompts[0][1]);
 });
+
+// ---- tax ----
+
+test('tax: amount and duration parsing', async () => {
+  const { parseTaxAmount, parseTaxDuration, formatMoney } = await import('../server/bots/WallBot.js');
+  assert.equal(parseTaxAmount('5m'), 5_000_000);
+  assert.equal(parseTaxAmount('500k'), 500_000);
+  assert.equal(parseTaxAmount('1.5b'), 1_500_000_000);
+  assert.equal(parseTaxAmount('$5,000,000'), 5_000_000);
+  for (const bad of ['', 'five', '0', '5x', '-5m']) assert.equal(parseTaxAmount(bad), null, bad);
+  assert.equal(parseTaxDuration('24hr'), 24 * 3600000);
+  assert.equal(parseTaxDuration('12h'), 12 * 3600000);
+  assert.equal(parseTaxDuration('2d'), 48 * 3600000);
+  assert.equal(parseTaxDuration('90m'), 90 * 60000);
+  assert.equal(parseTaxDuration('6'), 6 * 3600000, 'bare number is hours');
+  for (const bad of ['', 'soon', '0h', '90d', '30s']) assert.equal(parseTaxDuration(bad), null, bad);
+  assert.equal(formatMoney(5_000_000), '$5,000,000');
+});
+
+test('tax: start, ongoing, paid claim, pending, confirm, reset on next tax', () => {
+  clearWallTables();
+  db.clearTax.run(USER);
+  db.updateSettings(USER, {
+    wall_enabled: 1, wall_require_verified: 1, wall_chat_pattern: 'dm', wall_to_minecraft: 1,
+    tax_discord_webhook: 'https://discord.test/tax', tax_log_discord_webhook: 'https://discord.test/taxlog',
+  });
+  const add = (player, tags) => {
+    db.upsertWallPlayer.run({ user_id: USER, player, verified: 1, label: '', added_at: Date.now() });
+    db.updateWallPlayerTax.run({ user_id: USER, player, tax: 0, tax_admin: 0, discord_id: '', label: '', ...tags });
+  };
+  add('boss', { tax_admin: 1 });
+  add('bob', { tax: 1, discord_id: '123456789012345678' });
+  add('sam', { tax: 1 });
+  const session = { account: { id: 'a', username: 'wallbot' }, bot: { username: 'wallbot' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const whispers = [];
+  wb._whisper = (userId, player, text) => whispers.push([player, text]);
+  const posts = [];
+  wb._postDiscord = (userId, webhook, text, embed, role, users = []) => posts.push({ webhook, text, embed, users });
+  const dm = (from, msg) => wb.handleChat(USER, session, `[${from} -> me] ${msg}`);
+  try {
+    dm('Bob', 'tax 5m 24hr');
+    assert.equal(db.getWallState.get(USER).tax_due_at, 0, 'non-admins cannot start a tax');
+
+    dm('Boss', 'tax 5m 24hr');
+    assert.deepEqual(whispers.pop(), ['boss', 'Starting tax collection.']);
+    assert.equal(db.getWallState.get(USER).tax_amount, 5_000_000);
+    assert.equal(posts[0].webhook, 'https://discord.test/tax');
+    assert.deepEqual(posts[0].users, ['123456789012345678'], 'start pings taxed players with a Discord ID');
+
+    dm('Boss', 'tax 1m 1hr');
+    assert.deepEqual(whispers.pop(), ['boss', 'Error: Ongoing Tax']);
+
+    dm('Bob', 'paid');
+    assert.equal(db.getWallPlayer.get(USER, 'bob').tax_status, 'claimed');
+    assert.deepEqual(whispers.shift(), ['bob', 'Got it. waiting for the IRS to confirm.']);
+    assert.equal(whispers.shift()[0], 'boss', 'the starting admin hears about it');
+    const log = posts.at(-1);
+    assert.equal(log.webhook, 'https://discord.test/taxlog');
+    assert.equal(log.embed, undefined, 'the log is a plain code block, not an embed');
+    assert.match(log.text, /^```\n.*bob.* is waiting on confirmation\n```$/i);
+
+    dm('Boss', 'pending');
+    assert.match(whispers.pop()[1], /^Waiting \(1\): bob$/i);
+
+    dm('Boss', 'confirm bob');
+    assert.equal(db.getWallPlayer.get(USER, 'bob').tax_status, 'paid');
+    assert.match(posts.at(-1).text, /payment accepted by boss/i);
+
+    // Reminder pings only the unpaid.
+    db.setTaxReminderAt.run(0, USER);
+    wb._taxTick(USER);
+    assert.deepEqual(posts.at(-1).users, [], 'sam has no Discord ID, bob already paid');
+    assert.match(posts.at(-1).embed.fields[0].value, /sam/i);
+
+    // Due: overdue post closes it, and a new tax puts everyone back to not paid.
+    db.saveTax.run({ ...Object.fromEntries(['tax_amount', 'tax_started_at', 'tax_last_reminder_at', 'tax_started_by'].map((k) => [k, db.getWallState.get(USER)[k]])), user_id: USER, tax_due_at: 1 });
+    wb._taxTick(USER);
+    assert.equal(db.getWallState.get(USER).tax_due_at, 0);
+    assert.equal(posts.at(-1).embed.title, '🚨 Tax overdue');
+    dm('Boss', 'tax 5m 24hr');
+    assert.equal(db.getWallPlayer.get(USER, 'bob').tax_status, '');
+  } finally {
+    wb.stopAll();
+    db.clearTax.run(USER);
+  }
+});
+
+test('tax: pending lists nicknames packed into one message; everything else uses the IGN', () => {
+  clearWallTables();
+  db.clearTax.run(USER);
+  db.updateSettings(USER, { wall_enabled: 1, wall_chat_pattern: 'dm', wall_to_minecraft: 1, wall_msg_command: '/msg', tax_discord_webhook: '', tax_log_discord_webhook: '', wall_discord_webhook: '' });
+  const add = (ign, label, tags = {}) => {
+    const player = ign.toLowerCase();
+    db.upsertWallPlayer.run({ user_id: USER, player, verified: 1, label: '', added_at: Date.now() });
+    db.updateWallPlayerTax.run({ user_id: USER, player, tax: 1, tax_admin: 0, discord_id: '', label, ...tags });
+    db.setDisplayName(ign, USER, player);
+  };
+  add('Boss', '', { tax: 0, tax_admin: 1 });
+  const roster = [['PugDog', 'Pug'], ['Certifications', 'Cert'], ['xxuuaann1', 'Juan'], ['PvpUprise', 'Uprise'],
+    ['Basescrum', 'Base'], ['Squeejiy', 'Squee'], ['Uloserawr', 'Uloser'], ['KingShipWrecked', 'King'],
+    ['GlitchSword', 'Glitch'], ['FestiveColin', 'Colin'], ['RoseAkira', 'Rose'], ['Wolf', '']];
+  for (const [ign, nick] of roster) add(ign, nick);
+  const session = { account: { id: 'a', username: 'wallbot' }, bot: { username: 'wallbot' }, status: 'online', sendChat() {} };
+  const wb = new WallBot({ emitToUser() {}, resolveSession: () => session });
+  const whispers = [];
+  wb._whisper = (userId, player, text) => whispers.push([player, text]);
+  const dm = (from, msg) => wb.handleChat(USER, session, `[${from} -> me] ${msg}`);
+  try {
+    dm('Boss', 'tax 5m 24hr');
+    whispers.length = 0;
+    dm('PugDog', 'paid');
+    assert.deepEqual(whispers.pop(), ['boss', 'PugDog paid? confirm PugDog / deny PugDog'], 'the admin ping uses the IGN');
+    for (const r of db.listWallPlayers.all(USER)) if (r.tax) db.setTaxStatus.run('claimed', USER, r.player);
+    whispers.length = 0;
+    dm('Boss', 'pending');
+    assert.equal(whispers.length, 1, `one message: ${whispers}`);
+    const [, line] = whispers[0];
+    assert.ok(`/msg Boss ${line}`.length <= 100, line);
+    assert.match(line, /\bPug\b/);
+    assert.match(line, /\bWolf\b/, 'no nickname = the IGN');
+    assert.ok(!/PugDog/.test(line), 'pending shows the nickname, not the IGN');
+
+    whispers.length = 0;
+    dm('Boss', 'confirm Juan');
+    assert.equal(db.getWallPlayer.get(USER, 'xxuuaann1').tax_status, 'paid', 'confirm takes the nickname');
+    assert.deepEqual(whispers.pop(), ['boss', 'Confirmed xxuuaann1.'], 'but answers with the IGN');
+  } finally {
+    wb.stopAll();
+    db.clearTax.run(USER);
+  }
+});

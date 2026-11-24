@@ -74,6 +74,10 @@ export default class Hub {
       case 'raidStart': bm.raidStart(userId); break;
       case 'raidStop': bm.raidStop(userId); break;
       case 'raidOutpostSet': bm.setRaidOutpost(userId, msg.state); break;
+      case 'taxStart': bm.taxStart(userId, msg.amount, msg.duration); break;
+      case 'taxEnd': bm.taxEnd(userId); break;
+      case 'taxConfirm': bm.taxConfirm(userId, msg.player); break;
+      case 'taxDeny': bm.taxDeny(userId, msg.player); break;
       default: break;
     }
   }

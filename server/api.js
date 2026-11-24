@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   insertAccount, listAccounts, deleteAccount, setAccountLoad, setAllAccountsLoad,
   getAccountById, getSettings, updateSettings,
-  getWallState, allWallCheckers, listWallPlayers, upsertWallPlayer, deleteWallPlayer,
+  getWallState, allWallCheckers, listWallPlayers, upsertWallPlayer, deleteWallPlayer, getWallPlayer, updateWallPlayerTax,
   resetWallStats, setDisplayName,
   listReports,
 } from './db/db.js';
@@ -219,6 +219,39 @@ export function createApiRouter({ botManager, emitToUser }) {
     mojangName(player).then((real) => {
       if (real && setDisplayName(real, userId, player)) botManager.wallBroadcast(userId);
     });
+  });
+
+  // Tax tags and Discord ID for one roster player. A pasted mention (<@123>) is accepted.
+  router.patch('/wall/players/:player', (req, res) => {
+    const userId = req.session.userId;
+    const player = normalizePlayer(req.params.player);
+    const row = getWallPlayer.get(userId, player);
+    if (!row) return res.status(404).json({ error: 'Not on the roster.' });
+    const b = req.body || {};
+    let discordId = row.discord_id;
+    if (b.discord_id !== undefined) {
+      const m = /^\s*(?:<@!?)?(\d{17,20})?>?\s*$/.exec(String(b.discord_id));
+      if (!m) return res.status(400).json({ error: 'Discord ID is the 17-20 digit number (Copy User ID).' });
+      discordId = m[1] || '';
+    }
+    // Nickname: what `pending` lists instead of the IGN. Unique, and never another player's IGN,
+    // so `confirm <nickname>` always means one person.
+    const label = b.label === undefined ? row.label : String(b.label).replace(/[^A-Za-z0-9_]/g, '').slice(0, 16);
+    if (label && label.toLowerCase() !== row.label.toLowerCase()) {
+      const clash = listWallPlayers.all(userId).find((r) => r.player !== player
+        && (r.label.toLowerCase() === label.toLowerCase() || r.player === label.toLowerCase()));
+      if (clash) return res.status(409).json({ error: `"${label}" is already ${clash.display_name || clash.player}'s ${clash.player === label.toLowerCase() ? 'name' : 'nickname'}.` });
+    }
+    updateWallPlayerTax.run({
+      user_id: userId, player,
+      tax: b.tax === undefined ? row.tax : (b.tax ? 1 : 0),
+      tax_admin: b.tax_admin === undefined ? row.tax_admin : (b.tax_admin ? 1 : 0),
+      discord_id: discordId,
+      // Nickname: the short name the tax list uses in chat instead of guessing one.
+      label,
+    });
+    botManager.wallBroadcast(userId);
+    res.json(listWallPlayers.all(userId));
   });
 
   router.delete('/wall/players/:player', (req, res) => {

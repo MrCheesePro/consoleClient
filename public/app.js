@@ -209,6 +209,7 @@ function handleWs(msg) {
         lastRaidCheckAt: msg.lastRaidCheckAt || 0,
         top: msg.top || [],
         roster: msg.roster || [],
+        tax: msg.tax || null,
         accountOnline: !!msg.accountOnline,
       };
       renderWallBot();
@@ -777,10 +778,104 @@ function renderRoster() {
     del.title = `Remove ${entry.player}`;
     del.onclick = () => removeRosterPlayer(entry.player);
 
-    row.append(name, badge, del);
+    // Tax tags and the Discord ID used to ping them. Saved on change over REST.
+    const chip = (key, text) => {
+      const b = document.createElement('button');
+      b.className = 'roster-badge tax-chip' + (entry[key] ? ' ok' : '');
+      b.textContent = text;
+      b.setAttribute('aria-pressed', String(!!entry[key]));
+      b.title = key === 'tax' ? 'Pays tax' : 'Tax admin: can start and confirm taxes';
+      b.onclick = () => patchRosterPlayer(entry.player, { [key]: !entry[key] });
+      return b;
+    };
+    const discord = document.createElement('input');
+    discord.className = 'text-input discord-id-input';
+    discord.placeholder = 'Discord ID';
+    discord.inputMode = 'numeric';
+    discord.value = entry.discord_id || '';
+    discord.title = 'Discord user ID (right-click user → Copy User ID), for tax pings';
+    discord.onchange = () => patchRosterPlayer(entry.player, { discord_id: discord.value.trim() });
+
+    const nick = document.createElement('input');
+    nick.className = 'text-input nick-input';
+    nick.placeholder = 'nickname';
+    nick.value = entry.label || '';
+    nick.title = 'Short name the bot uses only in the in-game "pending" list (blank = their IGN)';
+    nick.onchange = () => patchRosterPlayer(entry.player, { label: nick.value.trim() });
+
+    row.append(name, badge, chip('tax', 'tax'), chip('tax_admin', 'admin'), nick, discord, del);
+    list.appendChild(row);
+  }
+  renderTax();
+}
+
+async function patchRosterPlayer(player, patch) {
+  try {
+    wall.roster = await api(`/api/wall/players/${encodeURIComponent(player)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    renderRoster();
+  } catch (e) {
+    appendConsole({ text: e.message, error: true });
+    renderRoster();
+  }
+}
+
+const TAX_STATUS = { '': 'not paid', claimed: 'claimed', paid: 'paid' };
+
+function renderTax() {
+  const tax = wall.tax;
+  $('tax-start-form').hidden = !!tax;
+  $('tax-running').hidden = !tax;
+  const payers = wall.roster.filter((r) => r.tax);
+  const paid = payers.filter((r) => r.tax_status === 'paid').length;
+  $('tax-meta').textContent = tax ? `${paid}/${payers.length} paid` : 'none';
+  if (tax) {
+    const due = new Date(tax.dueAt).toLocaleString([], { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const hours = Math.max(0, Math.ceil((tax.dueAt - Date.now()) / 3600000));
+    $('tax-summary').textContent = `$${tax.amount.toLocaleString('en-US')} · due ${due} (${hours}h)`;
+  }
+  const list = $('tax-list');
+  list.innerHTML = '';
+  if (!payers.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leaderboard-empty';
+    empty.textContent = 'Nobody is tagged tax yet.';
+    list.appendChild(empty);
+    return;
+  }
+  // Waiting-on-confirmation first: that's the queue an admin acts on.
+  const order = { claimed: 0, '': 1, paid: 2 };
+  for (const entry of [...payers].sort((a, b) => order[a.tax_status] - order[b.tax_status])) {
+    const row = document.createElement('div');
+    row.className = 'leaderboard-row';
+    const name = document.createElement('span');
+    name.className = 'leaderboard-name';
+    name.textContent = entry.display_name || entry.player;
+    const badge = document.createElement('span');
+    badge.className = 'roster-badge' + (entry.tax_status === 'paid' ? ' ok' : entry.tax_status === 'claimed' ? ' warn' : '');
+    badge.textContent = tax ? TAX_STATUS[entry.tax_status] : 'tax';
+    row.append(name, badge);
+    if (tax && entry.tax_status !== 'paid') {
+      const ok = document.createElement('button');
+      ok.className = 'link-btn';
+      ok.textContent = 'Confirm';
+      ok.onclick = () => wsSend({ type: 'taxConfirm', player: entry.player });
+      row.append(ok);
+    }
+    if (tax && entry.tax_status === 'claimed') {
+      const no = document.createElement('button');
+      no.className = 'link-btn danger';
+      no.textContent = 'Deny';
+      no.onclick = () => wsSend({ type: 'taxDeny', player: entry.player });
+      row.append(no);
+    }
     list.appendChild(row);
   }
 }
+
+$('tax-start').onclick = () => {
+  wsSend({ type: 'taxStart', amount: $('tax-amount').value.trim(), duration: $('tax-duration').value.trim() });
+};
+$('tax-end').onclick = () => wsSend({ type: 'taxEnd' });
 
 $('roster-add').onclick = addRosterPlayer;
 $('roster-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addRosterPlayer(); });

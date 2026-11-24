@@ -126,7 +126,9 @@ db.exec(`
     discord_ping_role     TEXT    NOT NULL DEFAULT '',
     ping_weewoo           INTEGER NOT NULL DEFAULT 1,
     ping_raid_outpost     INTEGER NOT NULL DEFAULT 1,
-    wall_board_sort       TEXT    NOT NULL DEFAULT 'total'
+    wall_board_sort       TEXT    NOT NULL DEFAULT 'total',
+    tax_discord_webhook   TEXT    NOT NULL DEFAULT '',
+    tax_log_discord_webhook TEXT  NOT NULL DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS leaderboard (
@@ -241,6 +243,8 @@ db.exec(`
   addColumn('match_nsfw', `match_nsfw INTEGER NOT NULL DEFAULT 0`);
   addColumn('reports_enabled', `reports_enabled INTEGER NOT NULL DEFAULT 1`);
   addColumn('reports_verified_only', `reports_verified_only INTEGER NOT NULL DEFAULT 1`);
+  addColumn('tax_discord_webhook', `tax_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('tax_log_discord_webhook', `tax_log_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
 }
 
@@ -252,6 +256,23 @@ db.exec(`
   addColumn('raid_outpost_holder', `raid_outpost_holder TEXT NOT NULL DEFAULT ''`);
   addColumn('raid_outpost_claimed_at', `raid_outpost_claimed_at INTEGER NOT NULL DEFAULT 0`);
   addColumn('last_raid_check_at', `last_raid_check_at INTEGER NOT NULL DEFAULT 0`);
+  // The running tax. tax_due_at = 0 means none; persisted so a 24h tax survives a restart.
+  addColumn('tax_amount', `tax_amount INTEGER NOT NULL DEFAULT 0`);
+  addColumn('tax_started_at', `tax_started_at INTEGER NOT NULL DEFAULT 0`);
+  addColumn('tax_due_at', `tax_due_at INTEGER NOT NULL DEFAULT 0`);
+  addColumn('tax_last_reminder_at', `tax_last_reminder_at INTEGER NOT NULL DEFAULT 0`);
+  addColumn('tax_started_by', `tax_started_by TEXT NOT NULL DEFAULT ''`);
+}
+
+// Tax tags live on the roster row, so a rename (linkPlayerUuid) carries them along.
+// tax_status: '' unpaid | 'claimed' (said "paid", awaiting an admin) | 'paid' (confirmed).
+{
+  const cols = new Set(db.prepare(`PRAGMA table_info(wall_players)`).all().map((c) => c.name));
+  const addColumn = (name, ddl) => { if (!cols.has(name)) db.exec(`ALTER TABLE wall_players ADD COLUMN ${ddl}`); };
+  addColumn('tax', `tax INTEGER NOT NULL DEFAULT 0`);
+  addColumn('tax_admin', `tax_admin INTEGER NOT NULL DEFAULT 0`);
+  addColumn('discord_id', `discord_id TEXT NOT NULL DEFAULT ''`);
+  addColumn('tax_status', `tax_status TEXT NOT NULL DEFAULT ''`);
 }
 
 // Same problem one table over: CREATE TABLE IF NOT EXISTS won't add raid_checks to a wall_stats
@@ -377,6 +398,7 @@ const SETTINGS_FIELDS = [
   'raid_outpost_discord_webhook', 'report_discord_webhook', 'reports_enabled', 'reports_verified_only',
   'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost', 'wall_board_sort',
   'check_board_discord_webhook', 'ban_discord_webhook', 'match_discord_webhook', 'match_nsfw',
+  'tax_discord_webhook', 'tax_log_discord_webhook',
 ];
 
 export function updateSettings(userId, patch) {
@@ -449,8 +471,8 @@ export const allWallCheckers = db.prepare(
 );
 
 export const listWallPlayers = db.prepare(
-  `SELECT player, display_name, verified, label, added_at FROM wall_players WHERE user_id = ?
-   ORDER BY player ASC`
+  `SELECT player, display_name, verified, label, added_at, tax, tax_admin, discord_id, tax_status
+   FROM wall_players WHERE user_id = ? ORDER BY player ASC`
 );
 const _displayStmts = ['wall_stats', 'wall_players'].map((t) => db.prepare(
   `UPDATE ${t} SET display_name = @name WHERE user_id = @user_id AND player = @player AND display_name != @name`
@@ -470,9 +492,31 @@ export const getWallPlayer = db.prepare(
 export const upsertWallPlayer = withUuid(db.prepare(`
   INSERT INTO wall_players (user_id, player, uuid, verified, label, added_at)
   VALUES (@user_id, @player, @uuid, @verified, @label, @added_at)
-  ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified, label = @label,
+  ON CONFLICT(user_id, player) DO UPDATE SET verified = @verified,
+    label = CASE WHEN @label = '' THEN label ELSE @label END,
     uuid = CASE WHEN uuid = '' THEN @uuid ELSE uuid END
 `));
+// ---- Tax ----
+export const updateWallPlayerTax = db.prepare(
+  `UPDATE wall_players SET tax = @tax, tax_admin = @tax_admin, discord_id = @discord_id, label = @label
+   WHERE user_id = @user_id AND player = @player`
+);
+export const setTaxStatus = db.prepare(
+  `UPDATE wall_players SET tax_status = ? WHERE user_id = ? AND player = ?`
+);
+export const resetTaxStatuses = db.prepare(`UPDATE wall_players SET tax_status = '' WHERE user_id = ?`);
+export const saveTax = db.prepare(`
+  INSERT INTO wall_state (user_id, tax_amount, tax_started_at, tax_due_at, tax_last_reminder_at, tax_started_by)
+  VALUES (@user_id, @tax_amount, @tax_started_at, @tax_due_at, @tax_last_reminder_at, @tax_started_by)
+  ON CONFLICT(user_id) DO UPDATE SET tax_amount = @tax_amount, tax_started_at = @tax_started_at,
+    tax_due_at = @tax_due_at, tax_last_reminder_at = @tax_last_reminder_at, tax_started_by = @tax_started_by
+`);
+export const setTaxReminderAt = db.prepare(`UPDATE wall_state SET tax_last_reminder_at = ? WHERE user_id = ?`);
+export const clearTax = db.prepare(
+  `UPDATE wall_state SET tax_amount = 0, tax_started_at = 0, tax_due_at = 0, tax_last_reminder_at = 0,
+   tax_started_by = '' WHERE user_id = ?`
+);
+
 export const insertReport = db.prepare(
   `INSERT INTO reports (user_id, player, about, text, anonymous, kind, created_at)
    VALUES (@user_id, @player, @about, @text, @anonymous, @kind, @created_at)`

@@ -456,6 +456,11 @@ textarea.text-input {
 .leaderboard-gain { color: var(--ok); font-family: var(--mono); font-size: 11px; }
 .roster-badge { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
 .roster-badge.ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.roster-badge.warn { color: var(--warn); border-color: currentColor; }
+.tax-chip { cursor: pointer; background: none; }
+.discord-id-input, .nick-input { width: 150px; min-height: 30px; padding: 4px 8px; font-size: 12px; }
+.nick-input { width: 96px; }
+@media (max-width: 560px) { .discord-id-input { width: 96px; } .nick-input { width: 72px; } }
 
 
 /* ---------- Wall bot ---------- */
