@@ -197,6 +197,12 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   row shows up; `parseBans` regex-reads the table and each ban newer than `max(lastBanAt, now-10min)`
   is posted as one embed to `ban_discord_webhook`. Blank webhook = off, no fallback. Never returns
   early from `handleChat`. Duration shows `Permanent`, or the length plus a `<t:…:R>` countdown to the site's expiry time.
+- **Find me**: a whisper matching `MATCH_RE` (`find me a goth mommy`) posts a fictional profile card to
+  `match_discord_webhook` (blank = off, no fallback). **Verified only, always** (ignores
+  `wall_require_verified`); unverified or `MINOR_RE` hits get no reply. Verified gets `bet that broski`.
+  `buildMatchProfile` makes up the name and age (21–35); the only image is the requester's head.
+  `match_nsfw` (default off) adds each type's `spicy` prompt answers to the pool.
+  Never scrape, link or picture real people — that was asked for and refused on purpose.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.

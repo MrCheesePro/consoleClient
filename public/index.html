@@ -526,6 +526,11 @@
                         <label class="field-label">Ban feed webhook <span class="label-sub">Posts bans from the site when Shiva announces one. Blank = off.</span></label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
                       </div>
+                      <div class="field span-full">
+                        <label class="field-label">Match webhook <span class="label-sub">Verified players whisper "find me a ..." for a made-up fictional profile. Blank = off.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="match_discord_webhook" />
+                      </div>
+                      <label class="toggle-row span-full"><button class="toggle" data-setting="match_nsfw" aria-pressed="false"></button><span>NSFW match bios <span class="label-sub">point the match webhook at an age-restricted channel</span></span></label>
                     </div>
                   </div>
                   <div class="ledger-row">

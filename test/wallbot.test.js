@@ -13,6 +13,7 @@ const {
   default: WallBot, parseChatLine, compileTriggers, isQuietHours, normalizePlayer,
   fillPlaceholders, formatDuration, formatClock,
   RAID_OUTPOST_CLAIMED_RE, RAID_OUTPOST_LOST_RE, formatCheckBoard, cleanUuid,
+  MATCH_RE, MINOR_RE, buildMatchProfile,
 } = await import('../server/bots/WallBot.js');
 
 const USER = 'local';
@@ -1858,4 +1859,35 @@ znapsoftly												</a>
   const { SHIVA_RE } = await import('../server/bots/WallBot.js');
   assert.ok(SHIVA_RE.test('[SHIVA] A player was banned for blacklisted mod or client/hacking'));
   assert.ok(!SHIVA_RE.test('[Bob -> me] did shiva ban someone?'));
+});
+
+test('find me: parses the ask, refuses minors, keeps ages 21+', () => {
+  assert.equal(MATCH_RE.exec('find me a goth mommy')[1], 'goth mommy');
+  assert.equal(MATCH_RE.exec('Find me an abg!')[1], 'abg');
+  assert.equal(MATCH_RE.exec('walls'), null);
+  for (const q of ['teen goth', 'schoolgirl', '16 year old', 'young abg', 'loli']) assert.ok(MINOR_RE.test(q), q);
+  for (const q of ['goth mommy', 'abg', 'tall guy', '25 year old e-girl']) assert.ok(!MINOR_RE.test(q), q);
+  for (const r of [0, 0.5, 0.9999]) {
+    const p = buildMatchProfile('goth mommy', () => r);
+    assert.ok(p.age >= 21 && p.age <= 35, String(p.age));
+  }
+  assert.equal(buildMatchProfile('goth mommy', () => 0).name, 'Raven');
+  assert.equal(buildMatchProfile('goth daddy', () => 0).name, 'Damien');
+  assert.equal(buildMatchProfile('abg', () => 0).name, 'Vivian');
+  assert.equal(buildMatchProfile('someone nice', () => 0).name, 'Emma');
+  assert.equal(buildMatchProfile('abb', () => 0).name, 'Kevin');
+  assert.equal(buildMatchProfile('egirl', () => 0).name, 'Kenzie');
+  assert.equal(buildMatchProfile('tomboy', () => 0).name, 'Sam');
+  assert.equal(buildMatchProfile('hood baddie', () => 0).name, 'Destiny', 'baddie is checked before hood');
+  assert.equal(buildMatchProfile('hood girl', () => 0).name, 'Aaliyah');
+  const prompts = buildMatchProfile('goth mommy', () => 0).prompts;
+  assert.equal(prompts.length, 3);
+  assert.equal(new Set(prompts.map(([q]) => q)).size, 3, 'prompts are distinct');
+  // Spicy answers sit at the end of the pool, so rand ~1 reaches them only with nsfw on.
+  const last = () => 0.9999;
+  for (let i = 0; i < 200; i++) {
+    const qs = buildMatchProfile('goth mommy', Math.random, true).prompts.map(([q]) => q);
+    assert.equal(new Set(qs).size, 3, `repeated prompt: ${qs}`);
+  }
+  assert.notEqual(buildMatchProfile('goth', last).prompts[0][1], buildMatchProfile('goth', last, true).prompts[0][1]);
 });

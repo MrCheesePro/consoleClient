@@ -119,6 +119,8 @@ db.exec(`
     check_board_discord_webhook TEXT NOT NULL DEFAULT '',
     report_discord_webhook TEXT NOT NULL DEFAULT '',
     ban_discord_webhook   TEXT NOT NULL DEFAULT '',
+    match_discord_webhook TEXT NOT NULL DEFAULT '',
+    match_nsfw            INTEGER NOT NULL DEFAULT 0,
     reports_enabled       INTEGER NOT NULL DEFAULT 1,
     reports_verified_only INTEGER NOT NULL DEFAULT 1,
     discord_ping_role     TEXT    NOT NULL DEFAULT '',
@@ -235,6 +237,8 @@ db.exec(`
   addColumn('wall_board_sort', `wall_board_sort TEXT NOT NULL DEFAULT 'total'`);
   addColumn('report_discord_webhook', `report_discord_webhook TEXT NOT NULL DEFAULT ''`);
   addColumn('ban_discord_webhook', `ban_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('match_discord_webhook', `match_discord_webhook TEXT NOT NULL DEFAULT ''`);
+  addColumn('match_nsfw', `match_nsfw INTEGER NOT NULL DEFAULT 0`);
   addColumn('reports_enabled', `reports_enabled INTEGER NOT NULL DEFAULT 1`);
   addColumn('reports_verified_only', `reports_verified_only INTEGER NOT NULL DEFAULT 1`);
   addColumn('raid_outpost_combined_message', `raid_outpost_combined_message TEXT NOT NULL DEFAULT '${RAID_OUTPOST_COMBINED_DEFAULT}'`);
@@ -372,7 +376,7 @@ const SETTINGS_FIELDS = [
   'raid_outpost_reminder_message', 'raid_outpost_combined_message',
   'raid_outpost_discord_webhook', 'report_discord_webhook', 'reports_enabled', 'reports_verified_only',
   'discord_ping_role', 'ping_weewoo', 'ping_raid_outpost', 'wall_board_sort',
-  'check_board_discord_webhook', 'ban_discord_webhook',
+  'check_board_discord_webhook', 'ban_discord_webhook', 'match_discord_webhook', 'match_nsfw',
 ];
 
 export function updateSettings(userId, patch) {

@@ -19,6 +19,7 @@ const BOOL_KEYS = new Set([
   'wall_enabled', 'wall_require_verified', 'wall_to_minecraft', 'wall_to_discord',
   'raid_enabled', 'raid_to_discord', 'check_to_discord', 'grace_period',
   'ping_weewoo', 'ping_raid_outpost', 'reports_enabled', 'reports_verified_only',
+  'match_nsfw',
 ]);
 const INT_KEYS = new Set([
   'login_delay_ms', 'spam_delay_ms', 'wall_interval_ms', 'raid_delay_ms',

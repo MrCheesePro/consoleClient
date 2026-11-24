@@ -15,6 +15,7 @@ const COLOR_MUTED = 0x99AAB5; // grey — an all-clear
 const COLOR_LOG = 0x22D3EE;   // cyan — the check log (walls)
 const COLOR_RAID_LOG = 0x9B59B6; // purple — the check log (Raid Outpost)
 const COLOR_BOARD = 0xF1C40F; // gold — the factions leaderboard
+const COLOR_MATCH = 0xFF5FA2; // pink — a "find me" match card
 
 // Player head for the log embed's author line. Discord fetches this itself, so the player's name
 // reaches a third-party skin service rather than us calling out. Blank the constant to drop it.
@@ -32,6 +33,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const VERIFY_MAX_PER_HOUR = 5;         // wrong password/code guesses allowed per player, per hour
 const CODE_TTL_MS = 15 * 60 * 1000;    // how long an issued verification code stays usable
 const REPORT_MAX_PER_HOUR = 3;         // report links one player can request per hour
+const MATCH_MAX_PER_HOUR = 5;          // "find me" cards one player can request per hour
 const NOTICE_COOLDOWN_MS = 60 * 1000;  // how often one player can be told to verify
 const RECENT_SENT_MAX = 20;            // echo-suppression ring size
 
@@ -51,6 +53,520 @@ export const SHIVA_RE = /\[SHIVA\]\s*A player was banned/i;
 export const BANS_URL = 'https://cosmicreborn.com/punishments/bans';
 const BAN_FETCH_DELAYS_MS = [15 * 1000, 60 * 1000, 180 * 1000]; // the site can lag the chat line
 const BAN_LOOKBACK_MS = 10 * 60 * 1000; // only bans this close to the Shiva line count as new
+// "find me a goth mommy" -> a fictional profile card in Discord. Never a real person: the name and
+// age are made up here, and the only picture is the requester's own Minecraft head.
+export const MATCH_RE = /^\s*find\s+me\s+(?:an?\s+|some\s+)?(.{1,60}?)[\s.!?]*$/i;
+// Anything that reads as asking for a minor is dropped silently. Bare numbers under 18 count too.
+export const MINOR_RE = /\b(?:teens?|teenage(?:r|rs)?|young(?:er)?|kids?|child(?:ren)?|minors?|underage|jailbait|loli(?:ta)?|shota|school\s*(?:girl|boy)s?|(?:high|middle)\s*school(?:er)?|pre-?teens?|bab(?:y|ies)|little|petite|tiny|[0-9]|1[0-7])\b/i;
+// One entry per vibe: the stereotypical common names for it (f = women, m = men) and Hinge-style
+// prompt answers in its voice, on the prompts Hinge reports as most successful. First regex hit
+// wins; the last entry is the catch-all. `spicy` answers join the pool only when match_nsfw is on.
+const MATCH_TYPES = [
+  {
+    re: /goth|emo|alt\b|punk|metal|vamp|witch|grunge/i,
+    f: ["Raven", "Luna", "Lilith", "Morgan", "Nyx", "Ivy", "Willow", "Scarlett", "Violet", "Jade", "Elvira", "Morticia", "Ophelia", "Sable", "Onyx"],
+    m: ["Damien", "Ash", "Dante", "Vincent", "Silas", "Jett", "Corbin", "Rowan", "Sebastian", "Kai", "Lucian", "Damon", "Draven", "Alaric", "Ezra"],
+    prompts: [
+      ["My simple pleasures", "Thunderstorms, black coffee and a horror movie I've already seen"],
+      ["Typical Sunday", "Thrifting, then a cemetery walk, then takeout in bed"],
+      ["I go crazy for", "Anyone who can name more than one Type O Negative song"],
+      ["Together, we could", "Get matching tattoos and regret nothing"],
+      ["The way to win me over is", "Bite me. Literally, I'm into that"],
+      ["Dating me is like", "A Tim Burton movie. Weird, a little dark, worth it"],
+      ["My most irrational fear", "Tan lines"],
+      ["I'm looking for", "Someone who thinks Halloween is a lifestyle"],
+      ["We'll get along if", "You don't mind black on everything I own"],
+      ["Green flags I look for", "You cry at the end of Corpse Bride too"],
+      ["Typical Sunday", "Vintage shop, coffee black as my soul, then a seance"],
+      ["I go crazy for", "Dark lipstick and someone who reads poetry"],
+      ["Dating me is like", "A haunted house. Spooky at first, then you never want to leave"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Pin me down and tell me I'm your favorite nightmare"],
+      ["I go crazy for", "Collars, candlelight and getting bitten in the right places"],
+      ["Together, we could", "Skip the movie and get a noise complaint from the neighbors"],
+      ["I'm looking for", "A pet who knows to call me Mommy and mean it"],
+      ["The way to win me over is", "Getting on your knees and asking nicely"],
+      ["I go crazy for", "Leather, restraints and leaving marks you'll have to explain at work"],
+      ["Together, we could", "Find out how long you last before you beg"],
+      ["Dating me is like", "Being owned. Leash optional, obedience not"],
+      ["My simple pleasures", "Red wine, candle wax and you tied to my bedpost"],
+      ["Green flags I look for", "You have a safeword and you know when not to use it"],
+      ["I go crazy for", "Collars with your name tag on my nightstand"],
+      ["The way to win me over is", "Kneeling before I tell you to"],
+      ["Typical Sunday", "Brunch, then a trip to the toy store, then you don't leave the bed"],
+      ["We'll get along if", "You like being told no. And then yes"],
+      ["I'm looking for", "Someone to tie up with my good fishnets"],
+      ["Together, we could", "Find out what happens when the candles burn down"],
+      ["Dating me is like", "A cage. You'll ask to be let in"],
+      ["My simple pleasures", "Blindfolds, a riding crop and a long night"],
+      ["My most irrational fear", "A sub who can't follow instructions"],
+      ["I'm looking for", "A good boy or girl who earns their treats"],
+      ["The way to win me over is", "Saying 'yes, Mommy' without being asked twice"],
+      ["I go crazy for", "Spiked collars, silk rope and the sound of you begging"],
+      ["Together, we could", "Test how many rules you can follow in one night"],
+      ["Dating me is like", "Signing a contract. Read the fine print, it's all kinks"],
+      ["My simple pleasures", "Painting my nails black while you wait on the floor"],
+      ["Typical Sunday", "Morning coffee served on your knees"],
+      ["We'll get along if", "You like being praised and punished in the same breath"],
+      ["Green flags I look for", "You check in, then you do exactly as you're told"],
+      ["My most irrational fear", "Running out of rope halfway through"],
+      ["I go crazy for", "Leaving lipstick marks everywhere my collar doesn't cover"],
+      ["The way to win me over is", "Letting me pick your outfit. And when you take it off"],
+    ],
+  },
+  {
+    re: /\babg\b|\babb\b|asian/i,
+    f: ["Vivian", "Michelle", "Jessica", "Christine", "Tiffany", "Jennifer", "Kimberly", "Emily", "Angela", "Amy", "Cindy", "Stephanie", "Kelly", "Vanessa", "Annie"],
+    m: ["Kevin", "Brian", "Andrew", "Jason", "Eric", "Justin", "Daniel", "Ryan", "Michael", "Brandon", "Jonathan", "Kenny", "Vincent", "Alex", "Tony"],
+    prompts: [
+      ["The way to win me over is", "A boba run where you already know my order"],
+      ["Typical Sunday", "Dim sum hangover cure, then a nap until the rave"],
+      ["I go crazy for", "Hot pot at 2am and anyone who'll go with me"],
+      ["Together, we could", "Hit every EDM festival this summer"],
+      ["I'm looking for", "Someone my mom will feed seconds to"],
+      ["Dating me is like", "A night market. Loud, a little chaotic, you'll want more"],
+      ["My most irrational fear", "Running out of lash glue before a night out"],
+      ["My simple pleasures", "Fresh lashes, a matcha latte and a full camera roll"],
+      ["Green flags I look for", "You know how to get us a table"],
+      ["We'll get along if", "You can hang with my group chat of nine"],
+      ["The way to win me over is", "Matching my energy at the afterparty"],
+      ["Typical Sunday", "Brunch at noon, nails at two, club by eleven"],
+      ["My most irrational fear", "My car getting towed outside the club"],
+      ["My simple pleasures", "Late night pho and a long car ride"],
+      ["I'm looking for", "Someone who can parallel park my Civic"],
+      ["Green flags I look for", "You know boba from milk tea"],
+      ["Together, we could", "Hit every K-BBQ spot in the city"],
+      ["We'll get along if", "You survive my 40-minute skincare routine"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Buy me dinner, then don't let me make it to the rave"],
+      ["I'm looking for", "Someone who can keep up after the afterparty"],
+      ["Dating me is like", "Ordering extra spicy. You'll be sweating by the end"],
+      ["I go crazy for", "Getting wild after two drinks and pretending it was one"],
+      ["The way to win me over is", "Kissing me in the Uber on the way home"],
+      ["My most irrational fear", "Waking up and you're already gone"],
+      ["I'm looking for", "Someone who lasts longer than the afterparty"],
+      ["My simple pleasures", "Waking up in your hoodie and nothing else"],
+      ["Together, we could", "Skip the club and keep the lights low at my place"],
+      ["We'll get along if", "You like it when I take charge after a few drinks"],
+      ["Green flags I look for", "You don't flinch when I say I'm not tired yet"],
+      ["Typical Sunday", "Breakfast in bed, then back to bed"],
+    ],
+  },
+  {
+    re: /e-?girl|e-?boy|discord kitten|kitten/i,
+    f: ["Kenzie", "Ari", "Mika", "Lexi", "Bella", "Sky", "Ruby", "Cleo", "Hailey", "Kira", "Rae", "Kat", "Nyla", "Mimi", "Juno"],
+    m: ["Ezra", "Jace", "Kai", "Milo", "Zane", "River", "Eli", "Finn", "Jett", "Nico", "Theo", "Rory", "Sasha", "Ren", "Asher"],
+    prompts: [
+      ["My simple pleasures", "Cat ear headphones, a fresh eyeliner wing and a Monster"],
+      ["Typical Sunday", "TikTok until noon, Discord call until 3am"],
+      ["I go crazy for", "Chains, platform boots and anyone who matches my fit"],
+      ["I'm looking for", "Someone to be cringe with in public"],
+      ["Dating me is like", "A Pinterest board. Aesthetic, a little chaotic"],
+      ["Together, we could", "Make a TikTok that gets 2 views and love it anyway"],
+      ["My most irrational fear", "My lashes coming off on stream"],
+      ["Green flags I look for", "You let me do your eyeliner"],
+      ["We'll get along if", "You send me memes at 4am"],
+      ["The way to win me over is", "Gifting me Discord Nitro"],
+      ["My simple pleasures", "Ring light, lip gloss and a voice channel full of friends"],
+      ["Dating me is like", "A Twitch stream. Lots of chat, occasional chaos"],
+      ["Typical Sunday", "Sleep till 2, thrift haul, Discord movie night"],
+      ["I go crazy for", "Hello Kitty, chains and painted nails"],
+      ["The way to win me over is", "Remembering my favorite emote"],
+      ["Green flags I look for", "You don't make fun of my Pinterest boards"],
+      ["My most irrational fear", "Losing my Duolingo streak"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Call me a good girl and see what happens"],
+      ["I'm looking for", "Someone who knows what the choker is for"],
+      ["Together, we could", "Turn the camera off and find out what I'm like offline"],
+      ["I go crazy for", "Being told what to do. Nicely"],
+      ["We'll get along if", "You don't mind getting bossed around a little"],
+      ["My simple pleasures", "Thigh highs and someone to appreciate them"],
+      ["Dating me is like", "A private stream. Invite only"],
+      ["The way to win me over is", "Calling me your kitten and meaning it"],
+      ["I go crazy for", "A collar with a bell and you holding the leash"],
+      ["I'm looking for", "Someone who gives orders in VC"],
+      ["Together, we could", "Find out what every setting on the toy app does"],
+      ["Typical Sunday", "Cosplay photoshoot, then the outfit comes off"],
+      ["My most irrational fear", "Leaving my camera on by accident. Or on purpose"],
+    ],
+  },
+  {
+    re: /gamer|streamer|discord|valorant|fortnite/i,
+    f: ["Hailey", "Madison", "Kayla", "Chloe", "Ashley", "Zoe", "Bella", "Lexi", "Maya", "Nova", "Riley", "Ava", "Sophie", "Emma", "Paige"],
+    m: ["Tyler", "Jake", "Logan", "Ethan", "Mason", "Noah", "Caleb", "Liam", "Aiden", "Dylan", "Jacob", "Austin", "Connor", "Brandon", "Cole"],
+    prompts: [
+      ["I'm looking for", "Player two. Must main support"],
+      ["My simple pleasures", "Energy drinks and a 4am lobby that finally wins"],
+      ["The way to win me over is", "Carrying me in ranked without saying a word about it"],
+      ["Together, we could", "Stay up all night and blame the queue times"],
+      ["We'll get along if", "You don't rage quit"],
+      ["Dating me is like", "A loot box. Could be legendary, could be chaos"],
+      ["My most irrational fear", "My mic being on when I thought it was muted"],
+      ["Typical Sunday", "Patch notes and breakfast at 3pm"],
+      ["I go crazy for", "A setup with more RGB than sense"],
+      ["Green flags I look for", "You don't mind me finishing one last match"],
+      ["I'm looking for", "A duo partner who doesn't throw"],
+      ["Dating me is like", "Respawning. I always come back"],
+      ["Together, we could", "Build a Minecraft base and argue about the roof"],
+      ["My simple pleasures", "A clutch 1v3 and a cold Mountain Dew"],
+      ["Typical Sunday", "Speedrun attempts and pizza rolls"],
+      ["Green flags I look for", "You don't unplug my PC to vacuum"],
+      ["The way to win me over is", "Knowing my K/D without asking"],
+      ["We'll get along if", "You pretend my aim is good"],
+    ],
+    spicy: [
+      ["I go crazy for", "Someone who makes me forget I'm in queue"],
+      ["Together, we could", "End the stream and find out how long I last"],
+      ["I'm looking for", "A player two who likes to take control"],
+      ["The way to win me over is", "Showing me what those fast hands can do"],
+      ["My simple pleasures", "Losing on purpose so you'll punish me"],
+      ["Dating me is like", "A long session with no pauses"],
+      ["I'm looking for", "Someone to go hardcore mode with"],
+      ["Together, we could", "Play strip Mario Kart. Blue shells cost clothes"],
+      ["I go crazy for", "Being called a good player two"],
+      ["We'll get along if", "You don't mind me being loud"],
+      ["Green flags I look for", "You're good with a controller and better with your hands"],
+      ["Typical Sunday", "Lose every match and make it up to you in bed"],
+    ],
+  },
+  {
+    re: /latin|spanish|mexican|puerto|colombian|cuban/i,
+    f: ["Sofia", "Isabella", "Valentina", "Camila", "Gabriela", "Daniela", "Mariana", "Lucia", "Ximena", "Andrea", "Alejandra", "Paola", "Natalia", "Fernanda", "Jimena"],
+    m: ["Mateo", "Santiago", "Diego", "Alejandro", "Carlos", "Luis", "Javier", "Adrian", "Miguel", "Angel", "Jose", "Juan", "Gabriel", "Emilio", "Rafael"],
+    prompts: [
+      ["The way to win me over is", "Keeping up with me on the dance floor"],
+      ["Typical Sunday", "Family lunch that somehow lasts until dinner"],
+      ["I go crazy for", "Street tacos and anyone who can handle spice"],
+      ["Green flags I look for", "You actually eat when my abuela offers"],
+      ["Together, we could", "Salsa class, then see who leads"],
+      ["Dating me is like", "Hot sauce. A lot at first, then you're addicted"],
+      ["My most irrational fear", "The chancla"],
+      ["My simple pleasures", "Bad Bunny at full volume and a cafecito"],
+      ["I'm looking for", "Someone who dances at the carne asada"],
+      ["We'll get along if", "You survive my family group chat"],
+      ["Typical Sunday", "Misa, menudo, then futbol on the TV"],
+      ["The way to win me over is", "Learning my mom's name before mine"],
+      ["Green flags I look for", "You can handle hot Cheetos with lime"],
+      ["I'm looking for", "Someone who knows a good pupusa spot"],
+      ["Together, we could", "Cook arroz con pollo and burn it together"],
+      ["I go crazy for", "Selena on vinyl and a cold Jarritos"],
+      ["Dating me is like", "A quinceanera. Big, loud and everybody's dancing"],
+      ["My most irrational fear", "Telling my mom we broke up"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Dancing close enough to feel it"],
+      ["Dating me is like", "Extra hot. You were warned"],
+      ["Together, we could", "Skip salsa class and practice somewhere private"],
+      ["I go crazy for", "Being whispered to in Spanish, slowly"],
+      ["I'm looking for", "Someone who knows how to move their hips"],
+      ["The way to win me over is", "Making me late for Sunday dinner"],
+      ["My simple pleasures", "Bachata in the kitchen that ends on the counter"],
+      ["Together, we could", "Make the neighbors learn my name"],
+      ["We'll get along if", "You can handle me being loud"],
+      ["Typical Sunday", "Sleeping in after a very long night"],
+      ["Green flags I look for", "You take your time. All night"],
+      ["Dating me is like", "Tequila. Burns going down, can't stop after"],
+    ],
+  },
+  {
+    re: /country|cowgirl|cowboy|southern|farm|rodeo|redneck/i,
+    f: ["Kaylee", "Savannah", "Brooke", "Lainey", "Hannah", "Taylor", "Emma", "Ella", "Reese", "Dixie", "Addison", "Josie", "Callie", "Maddie", "Kenzie"],
+    m: ["Wyatt", "Colton", "Cody", "Luke", "Hunter", "Tucker", "Garrett", "Hank", "Beau", "Waylon", "Bryce", "Dalton", "Ty", "Jesse", "Clay"],
+    prompts: [
+      ["The way to win me over is", "Taking me two-steppin'"],
+      ["My simple pleasures", "Bonfires, back roads and sweet tea"],
+      ["Typical Sunday", "Church, then the lake, then the bar"],
+      ["Together, we could", "Ride off into the sunset. I'll drive the truck"],
+      ["I'm looking for", "Someone who can save a horse"],
+      ["Dating me is like", "A country song. Starts sweet, ends with a truck"],
+      ["My most irrational fear", "City parking"],
+      ["I go crazy for", "Anyone in Wranglers"],
+      ["Green flags I look for", "You say ma'am and mean it"],
+      ["We'll get along if", "You can sit through a whole Luke Combs set"],
+      ["My simple pleasures", "A cold beer on a tailgate at sunset"],
+      ["I'm looking for", "Someone to share my porch swing with"],
+      ["Dating me is like", "A dirt road. Bumpy, but it gets you somewhere good"],
+      ["Typical Sunday", "Fishing pole in one hand, Busch Light in the other"],
+      ["The way to win me over is", "Fixing my fence without being asked"],
+      ["Together, we could", "Build a bonfire you can see from the highway"],
+      ["Green flags I look for", "You wave at every truck that passes"],
+      ["My most irrational fear", "Running out of gas on a back road"],
+    ],
+    spicy: [
+      ["I'm looking for", "A cowboy who knows how to ride"],
+      ["The way to win me over is", "Taking the long way home and parking somewhere quiet"],
+      ["I go crazy for", "Tight jeans, a truck bed and no tan lines"],
+      ["My simple pleasures", "Getting tangled up in the truck bed under the stars"],
+      ["I go crazy for", "Someone who knows what to do with a rope"],
+      ["Dating me is like", "Eight seconds is the minimum"],
+      ["I'm looking for", "A cowboy who can ride all night"],
+      ["Together, we could", "Fog up the truck windows at the drive-in"],
+      ["The way to win me over is", "Strong hands and a belt buckle I can undo"],
+      ["We'll get along if", "You like it a little rough"],
+      ["Typical Sunday", "The hayloft, then a long nap"],
+      ["Green flags I look for", "You tip your hat before you take it off"],
+    ],
+  },
+  {
+    re: /gym|fit|lift|athlet|swole|muscle|crossfit/i,
+    f: ["Ashley", "Brittany", "Taylor", "Alexis", "Jordan", "Megan", "Sierra", "Kendall", "Morgan", "Paige", "Kaitlyn", "Haley", "Lindsey", "Courtney", "Tori"],
+    m: ["Chad", "Tyler", "Brett", "Derek", "Trevor", "Kyle", "Blake", "Cole", "Zach", "Austin", "Brock", "Chase", "Lance", "Ryder", "Jake"],
+    prompts: [
+      ["My simple pleasures", "A new PR and a protein shake after"],
+      ["Typical Sunday", "Meal prep, leg day, sauna"],
+      ["Green flags I look for", "You don't skip cardio"],
+      ["The way to win me over is", "Spotting me without staring. Or staring, a little"],
+      ["Together, we could", "Hit a new PR and celebrate with something I'd never post"],
+      ["Dating me is like", "A pre-workout. Intense, then you crash happy"],
+      ["My most irrational fear", "The gym being closed on a holiday"],
+      ["I'm looking for", "A lifting partner who doesn't ghost after week two"],
+      ["I go crazy for", "Chicken, rice and clean reps"],
+      ["We'll get along if", "You don't judge my pre-workout dosage"],
+      ["Green flags I look for", "You rerack your weights"],
+      ["Dating me is like", "A drop set. Keeps going after you think it's over"],
+      ["My most irrational fear", "Skipping leg day by accident"],
+      ["Typical Sunday", "Rest day. Kidding, it's chest day"],
+      ["The way to win me over is", "Bringing me a protein bar after my set"],
+      ["Together, we could", "Train for a half marathon and never sign up"],
+      ["My simple pleasures", "Ice baths and an early night"],
+      ["Green flags I look for", "You track macros without making it your personality"],
+    ],
+    spicy: [
+      ["My simple pleasures", "Getting sweaty with someone, gym optional"],
+      ["The way to win me over is", "Picking me up like a PR"],
+      ["Together, we could", "Find out if my stamina is just for cardio"],
+      ["The way to win me over is", "Showing me that grip strength"],
+      ["I go crazy for", "Post-workout everything"],
+      ["I'm looking for", "Someone who can go more than one round"],
+      ["Together, we could", "Burn more calories in bed than on the treadmill"],
+      ["My simple pleasures", "Getting pinned after a heavy set"],
+      ["We'll get along if", "You like being thrown around a little"],
+      ["Typical Sunday", "Leg day, then making mine shake for a different reason"],
+      ["Green flags I look for", "You have the stamina to back it up"],
+      ["Dating me is like", "HIIT. Lots of reps, no rest"],
+    ],
+  },
+  {
+    re: /nerd|geek|anime|weeb|book|cosplay|dnd|d&d/i,
+    f: ["Emily", "Hannah", "Abigail", "Olivia", "Grace", "Claire", "Natalie", "Rachel", "Audrey", "Lily", "Ruth", "Iris", "Eleanor", "Penny", "Evelyn"],
+    m: ["Ethan", "Nathan", "Owen", "Elliot", "Simon", "Henry", "Max", "Isaac", "Oliver", "Calvin", "Arthur", "Wesley", "Milo", "Leon", "Felix"],
+    prompts: [
+      ["I go crazy for", "A bookstore with a cafe in it"],
+      ["I'm looking for", "A bard for my campaign. And my heart"],
+      ["Typical Sunday", "Rewatching an anime I've seen four times"],
+      ["Together, we could", "Cosplay as a duo at the next con"],
+      ["We'll get along if", "You have opinions about the Fellowship"],
+      ["Dating me is like", "A side quest. Optional, but the best part"],
+      ["My most irrational fear", "Someone spoiling the finale"],
+      ["My simple pleasures", "New book smell and a rainy day off"],
+      ["Green flags I look for", "You have a favorite Pokemon and a reason why"],
+      ["The way to win me over is", "A handwritten note. Bonus points in Elvish"],
+      ["I'm looking for", "Someone to go to midnight premieres with"],
+      ["Together, we could", "Finish a 1000-piece puzzle and frame it"],
+      ["We'll get along if", "You don't mind long lore explanations"],
+      ["Typical Sunday", "Library, board game cafe, bed by ten"],
+      ["I go crazy for", "Star Wars trivia and fancy notebooks"],
+      ["Dating me is like", "An open world game. So much to discover"],
+      ["My most irrational fear", "Losing my save file"],
+      ["Green flags I look for", "You remember my D&D party's names"],
+    ],
+    spicy: [
+      ["I go crazy for", "Roleplay. Not just the D&D kind"],
+      ["I'm looking for", "Someone to roll for initiative with in bed"],
+      ["Dating me is like", "A spicy fanfic. Slow burn, then chapter 12"],
+      ["Dating me is like", "A dungeon crawl. You'll explore every corner"],
+      ["My simple pleasures", "Glasses on, nothing else"],
+      ["The way to win me over is", "Whispering the lore in my ear"],
+      ["I'm looking for", "A dungeon master who means it literally"],
+      ["Together, we could", "Act out every spicy fanfic I've bookmarked"],
+      ["I go crazy for", "Being called a good little nerd"],
+      ["We'll get along if", "You like it when I read you the smut parts out loud"],
+      ["Typical Sunday", "Cosplay in the morning, out of costume by noon"],
+      ["Green flags I look for", "You're patient. Slow burn is a lifestyle"],
+    ],
+  },
+  {
+    re: /baddie|bad b|rich|model|influencer|bougie/i,
+    f: ["Destiny", "Jasmine", "Aaliyah", "Brianna", "Mia", "Kylie", "Nia", "Amber", "Jada", "Diamond", "Ciara", "Kiana", "Tatiana", "Essence", "Mariah"],
+    m: ["Marcus", "Jordan", "Andre", "Xavier", "Isaiah", "Malik", "Dominic", "Cameron", "Jalen", "Zion", "Tre", "Jaden", "Kendrick", "Devin", "Elijah"],
+    prompts: [
+      ["The way to win me over is", "A dinner reservation I didn't have to make"],
+      ["My simple pleasures", "Fresh nails and a good angle"],
+      ["I'm looking for", "Someone who can keep up with my standards"],
+      ["Together, we could", "Take a trip that ruins everyone's feed"],
+      ["Green flags I look for", "You open doors and Venmo back fast"],
+      ["Dating me is like", "Designer. Expensive, worth it"],
+      ["My most irrational fear", "Bad lighting"],
+      ["Typical Sunday", "Bottomless mimosas and a nap I deserve"],
+      ["I go crazy for", "Someone who plans the whole date"],
+      ["We'll get along if", "You take good pictures of me"],
+      ["My most irrational fear", "A guy who says 'I'm not really a texter'"],
+      ["The way to win me over is", "Showing up on time with flowers"],
+      ["My simple pleasures", "A sunset dinner on a rooftop"],
+      ["I'm looking for", "Someone with a passport and a plan"],
+      ["Together, we could", "Get matching Cartier bracelets"],
+      ["Green flags I look for", "You hype me up in the comments"],
+      ["Typical Sunday", "Face mask, self care and ignoring everyone"],
+      ["Dating me is like", "A first class upgrade. No going back"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Spoiling me. I'll make it worth your while"],
+      ["I'm looking for", "Someone who knows exactly what to do with me"],
+      ["Together, we could", "Make room service blush"],
+      ["I go crazy for", "Being spoiled in every way you can imagine"],
+      ["Dating me is like", "A luxury suite. Worth the price, open all night"],
+      ["We'll get along if", "You don't need to be told twice"],
+      ["I'm looking for", "Someone who can keep up all night"],
+      ["Together, we could", "Make room service knock twice"],
+      ["The way to win me over is", "Hands on my waist and knowing exactly where to go next"],
+      ["We'll get along if", "You beg pretty"],
+      ["Typical Sunday", "Lingerie haul, then a private fashion show"],
+      ["Green flags I look for", "You like being told exactly what I want"],
+    ],
+  },
+  {
+    re: /tom\s*boy|skater|sporty/i,
+    f: ["Sam", "Alex", "Charlie", "Jordan", "Riley", "Frankie", "Max", "Billie", "Jo", "Casey", "Mel", "Toni", "Drew", "Bobbie", "Remi"],
+    m: ["Jake", "Ryan", "Tyler", "Cody", "Matt", "Nick", "Josh", "Kyle", "Sean", "Brandon", "Chris", "Danny", "Mike", "Ben", "Jamie"],
+    prompts: [
+      ["My simple pleasures", "Basketball shorts, a backwards cap and a gas station hot dog"],
+      ["The way to win me over is", "Beating me at Smash. Nobody has"],
+      ["Typical Sunday", "Pickup game, then wings, then a nap"],
+      ["I go crazy for", "Skate parks, sneaker drops and cheap pizza"],
+      ["I'm looking for", "Someone who can keep up on a hike"],
+      ["Dating me is like", "Hanging out with your best friend who happens to be cute"],
+      ["Together, we could", "Build a half pipe in the backyard"],
+      ["Green flags I look for", "You don't care that I wear your hoodies better"],
+      ["My most irrational fear", "Wearing a dress to a wedding"],
+      ["We'll get along if", "You can take a little trash talk"],
+      ["Typical Sunday", "Fishing at 6am, then breakfast burritos"],
+      ["I'm looking for", "A teammate in life and in pickup basketball"],
+      ["I go crazy for", "Fishing trips and beat-up Vans"],
+      ["Together, we could", "Go to a hockey game and yell the whole time"],
+      ["My simple pleasures", "Cold pizza for breakfast"],
+      ["My most irrational fear", "Losing to my little brother at 2K"],
+      ["The way to win me over is", "Teaching me a kickflip without laughing"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Wrestling me. Loser picks the next round"],
+      ["I go crazy for", "Getting pinned in a fair fight"],
+      ["Together, we could", "Find out I'm not so tough after all"],
+      ["I'm looking for", "Someone who can match me in the gym and after it"],
+      ["My simple pleasures", "Your hoodie and nothing underneath"],
+      ["The way to win me over is", "Making me forget I'm the tough one"],
+      ["Dating me is like", "Roughhousing that goes somewhere"],
+      ["I go crazy for", "Getting pinned and losing on purpose"],
+      ["Together, we could", "Play one-on-one, winner picks the position"],
+      ["We'll get along if", "You like it when I take control"],
+      ["Typical Sunday", "Gym, shower together, back to bed"],
+      ["I'm looking for", "Someone who can make me blush. Good luck"],
+      ["The way to win me over is", "Pulling me in by the hoodie strings"],
+    ],
+  },
+  {
+    re: /hood|ghetto|ratchet|thug|street|\btrap\b/i,
+    f: ["Aaliyah", "Imani", "Kiara", "Nia", "Tiana", "Keisha", "Monique", "Jada", "Brianna", "Shanice", "Tasha", "Ebony", "Dominique", "Jazmine", "Kayla"],
+    m: ["Marcus", "Darius", "Malik", "Jaylen", "Terrell", "Andre", "DeShawn", "Isaiah", "Jamal", "Dominic", "Tyrell", "Jerome", "Rashad", "Cedric", "Quinton"],
+    prompts: [
+      ["My simple pleasures", "Hennessy, hot wings and a good playlist"],
+      ["The way to win me over is", "Loyalty. That's the whole list"],
+      ["Typical Sunday", "Pull up to the cookout and stay till the streetlights come on"],
+      ["I go crazy for", "Fresh Jordans and a fresh cut"],
+      ["I'm looking for", "Someone who rides for me, no questions"],
+      ["Dating me is like", "Riding shotgun with the bass up"],
+      ["Together, we could", "Go to the strip club for the wings. Just the wings"],
+      ["Green flags I look for", "You know every word to old Lil Wayne"],
+      ["We'll get along if", "You don't mind my cousins pulling up unannounced"],
+      ["My most irrational fear", "Somebody eating the last wing"],
+      ["My simple pleasures", "Sunday dinner at grandma's"],
+      ["Dating me is like", "A summer block party. Loud, fun, everybody's invited"],
+      ["The way to win me over is", "Bringing me a plate from the function"],
+      ["I go crazy for", "Spades nights where somebody's always cheating"],
+      ["Together, we could", "Hit the car wash and ride with the windows down"],
+      ["I'm looking for", "Someone real. No fake love"],
+      ["My most irrational fear", "Somebody stepping on my fresh sneakers"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Treat me right and I'll treat you better"],
+      ["I go crazy for", "Late night pull ups, no questions asked"],
+      ["I'm looking for", "Someone who can handle all this"],
+      ["Together, we could", "Fog up the Charger windows"],
+      ["The way to win me over is", "Pulling up at 2am and not making me wait"],
+      ["Dating me is like", "Hennessy. Smooth, then it hits you"],
+      ["My simple pleasures", "Slow jams with the lights off"],
+      ["I'm looking for", "Somebody who knows how to put it down"],
+      ["Together, we could", "Make the bed louder than the speakers"],
+      ["I go crazy for", "Late night calls that end with you at my door"],
+      ["We'll get along if", "You don't leave before breakfast"],
+      ["Typical Sunday", "Laying up all day, phones off"],
+      ["Green flags I look for", "You whisper what you're gonna do, then you do it"],
+    ],
+  },
+  {
+    re: /./,
+    f: ["Emma", "Olivia", "Ava", "Sophia", "Mia", "Isabella", "Charlotte", "Amelia", "Harper", "Ella", "Abigail", "Emily", "Grace", "Chloe", "Madison"],
+    m: ["Liam", "Noah", "Oliver", "James", "Elijah", "William", "Henry", "Lucas", "Benjamin", "Jack", "Mason", "Logan", "Ethan", "Daniel", "Michael"],
+    prompts: [
+      ["My simple pleasures", "Iced coffee and a parking spot right out front"],
+      ["Typical Sunday", "Farmers market, then a nap"],
+      ["The way to win me over is", "Making me laugh at something I shouldn't"],
+      ["I'm looking for", "Someone to share fries with"],
+      ["Together, we could", "Take a spontaneous road trip with no plan"],
+      ["Dating me is like", "A playlist on shuffle. Something good every time"],
+      ["My most irrational fear", "Birds. They know something"],
+      ["Green flags I look for", "You're nice to waiters"],
+      ["We'll get along if", "You laugh at your own jokes"],
+      ["I go crazy for", "A good taco and a better playlist"],
+      ["Typical Sunday", "Sleeping in, then pancakes"],
+      ["My most irrational fear", "Accidentally liking an old photo"],
+      ["Dating me is like", "Your favorite sweater. Comfy and always there"],
+      ["I'm looking for", "Someone to try every brunch spot with"],
+      ["The way to win me over is", "Remembering my coffee order"],
+      ["Together, we could", "Adopt a dog and argue about the name"],
+      ["Green flags I look for", "You text 'home safe?'"],
+      ["My simple pleasures", "Fresh sheets and a long nap"],
+    ],
+    spicy: [
+      ["The way to win me over is", "Confidence, and knowing what you want"],
+      ["I go crazy for", "Late night texts that turn into a late night"],
+      ["Together, we could", "Skip dinner and go straight to dessert"],
+      ["The way to win me over is", "Confidence in the bedroom"],
+      ["Dating me is like", "Netflix and not much watching"],
+      ["I'm looking for", "Someone who keeps it spicy after the first date"],
+      ["I'm looking for", "Someone with no limits and a safeword"],
+      ["Together, we could", "Break the bed frame"],
+      ["I go crazy for", "Morning sex and coffee after"],
+      ["We'll get along if", "You're loud and proud about it"],
+      ["Typical Sunday", "Never leaving the bed"],
+      ["Green flags I look for", "You ask what I like, then you remember"],
+    ],
+  },
+];
+const MALE_RE = /\b(?:daddy|guy|man|men|dude|king|husband|himbo|boyfriend|bf|him|he|abb|boy)\b/i;
+const MATCH_PROMPTS_SHOWN = 3;
+
+/** Pure: the made-up profile for a "find me" request. `rand` is injectable for tests. */
+export function buildMatchProfile(query, rand = Math.random, nsfw = false) {
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const type = MATCH_TYPES.find((t) => t.re.test(query));
+  const pool = nsfw ? [...type.prompts, ...type.spicy] : [...type.prompts];
+  const prompts = [];
+  // Draw without replacement, skipping a prompt question already on the card.
+  while (prompts.length < MATCH_PROMPTS_SHOWN && pool.length) {
+    const next = pool.splice(Math.floor(rand() * pool.length), 1)[0];
+    if (!prompts.some(([q]) => q === next[0])) prompts.push(next);
+  }
+  return {
+    name: pick(MALE_RE.test(query) ? type.m : type.f),
+    age: 21 + Math.floor(rand() * 15), // 21–35
+    prompts,
+    compat: 60 + Math.floor(rand() * 40),
+  };
+}
+
 export const RAID_OUTPOST_LOST_RE = /\(!\)\s+([A-Za-z0-9_]+)\s+have lost the Raid Outpost,\s+as they have held control for 12 hours!/i;
 
 // Two built-in chat parsers, selected by name from the wall_chat_pattern setting.
@@ -388,6 +904,7 @@ export default class WallBot {
       uuids: new Map(),          // lowercased player -> UUID linked this session
       pendingCodes: new Map(),   // player -> { code, expiresAt } awaiting confirmation
       reportRequests: new Map(), // player -> [ts, ...] of report links issued this hour
+      matchRequests: new Map(),  // player -> [ts, ...] of "find me" cards posted this hour
       banTimer: null,            // pending bans-page fetch after a Shiva line
       lastBanAt: 0,              // newest ban already posted (site time, ms)
       queue: [],                 // pending outbound messages
@@ -547,6 +1064,7 @@ export default class WallBot {
     this._rememberCase(userId, player);
     if (this._handleVerify(userId, settings, player, message)) return;
     if (this._handleReport(userId, settings, player, message)) return;
+    if (this._handleMatch(userId, settings, player, message)) return;
     if (this._handleRaidTriggers(userId, settings, player, message)) return;
     this._handleCheckTrigger(userId, settings, player, message);
   }
@@ -689,6 +1207,55 @@ export default class WallBot {
     // Keep this short: the whole `/msg <player> ...` line must fit in 100 characters.
     this._whisper(userId, player, `Report: ${reportUrl(issueReportToken(userId, player, now))}`);
     return true;
+  }
+
+  /**
+   * `find me a <something>` — verified players only, always (the wall's verified toggle doesn't
+   * open it). Unverified players and anything that reads as a minor get no reply at all.
+   */
+  _handleMatch(userId, settings, player, message) {
+    const webhook = settings.match_discord_webhook;
+    const m = webhook && MATCH_RE.exec(message);
+    if (!m) return false;
+    const query = m[1].replace(/[`*_~|<>@#]/g, '').trim();
+    if (!query) return false;
+    if (!getWallPlayer.get(userId, player)?.verified) {
+      this._console(userId, `Ignored "find me" from unverified ${player}.`);
+      return true;
+    }
+    if (MINOR_RE.test(query)) {
+      this._console(userId, `Refused "find me" from ${player}: request reads as a minor.`);
+      return true;
+    }
+    const state = this._stateFor(userId);
+    const now = Date.now();
+    const recent = (state.matchRequests.get(player) || []).filter((ts) => now - ts < HOUR_MS);
+    if (recent.length >= MATCH_MAX_PER_HOUR) {
+      state.matchRequests.set(player, recent);
+      this._notifyOnce(userId, player, 'Slow down broski, try again later.');
+      return true;
+    }
+    recent.push(now);
+    state.matchRequests.set(player, recent);
+    this._whisper(userId, player, 'bet that broski');
+    this._postMatch(userId, webhook, player, query, !!settings.match_nsfw);
+    return true;
+  }
+
+  async _postMatch(userId, webhook, player, query, nsfw) {
+    const p = buildMatchProfile(query, Math.random, nsfw);
+    const shown = this._stateFor(userId).displayNames.get(player) || player;
+    await this._postDiscord(userId, webhook, '', {
+      color: COLOR_MATCH,
+      author: { name: `${shown} is looking for: ${query}`, icon_url: HEAD_URL(shown) },
+      title: `💘 ${p.name}, ${p.age}`,
+      fields: [
+        ...p.prompts.map(([name, value]) => ({ name, value })),
+        { name: 'Compatibility', value: `${p.compat}%`, inline: true },
+      ],
+      thumbnail: { url: HEAD_URL(shown) },
+    });
+    this._console(userId, `Posted a "find me" card for ${player}: ${query}`);
   }
 
   _handleRaidTriggers(userId, settings, player, message) {
