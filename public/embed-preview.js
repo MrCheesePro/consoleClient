@@ -60,7 +60,10 @@ const el = (tag, cls, text) => {
 // Where WallBot#_send would post this channel: its own webhook when toggled on with a URL, else
 // the wall webhook when "Send to Discord" is on, else nowhere.
 function destination(channel) {
-  // Reports never fall back to the wall webhook (server/report.js).
+  // Matches and reports never fall back to the wall webhook.
+  if (channel === 'match') {
+    return value('match_discord_webhook') ? { text: '→ match webhook', sent: true } : { text: 'not sent: match webhook is blank', sent: false };
+  }
   if (channel === 'report') {
     if (!on('reports_enabled')) return { text: 'not sent: reports are turned off', sent: false };
     return value('report_discord_webhook') ? { text: '→ reports webhook', sent: true } : { text: 'not sent: reports webhook is blank', sent: false };
@@ -212,6 +215,36 @@ function render() {
       description: `**We claimed the Raid Outpost (${faction}).**`,
     }),
   );
+}
+
+// The "find me" card from WallBot#_postMatch. The profile comes from the server (same builder the
+// bot uses), so the preview can't drift from the real names and answers; only the layout lives here.
+async function renderMatch() {
+  const root = document.getElementById('match-preview');
+  if (!root) return;
+  const q = document.getElementById('match-preview-q').value;
+  const res = await fetch(`/api/match/preview?q=${encodeURIComponent(q)}&nsfw=${on('match_nsfw') ? 1 : 0}`).catch(() => null);
+  const data = res ? await res.json().catch(() => ({})) : { error: 'Could not reach the panel.' };
+  if (!res?.ok) { root.replaceChildren(el('p', 'dp-when', data.error || 'Preview failed.')); return; }
+  root.replaceChildren(embed({
+    name: `find me a ${data.query}`, channel: 'match', color: '#FF5FA2', thumb: true,
+    when: 'Whispered by a verified player. They get "bet that broski" in game.',
+    author: `zghostx is looking for: ${data.query}`,
+    title: `💘 ${data.name}, ${data.age}`,
+    fields: [
+      ...data.prompts.map(([name, v]) => ({ name, value: v })),
+      { name: 'Compatibility', value: `${data.compat}%`, inline: true },
+    ],
+  }));
+}
+document.getElementById('match-preview-roll')?.addEventListener('click', renderMatch);
+document.getElementById('match-preview-q')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') renderMatch(); });
+document.querySelector('.toggle[data-setting="match_nsfw"]')?.addEventListener('click', () => setTimeout(renderMatch));
+// Roll a fresh card each time the Matches view opens. Rendering at load would run before login.
+const matchesView = document.getElementById('view-matches');
+if (matchesView) {
+  new MutationObserver(() => { if (!matchesView.classList.contains('hidden')) renderMatch(); })
+    .observe(matchesView, { attributes: true, attributeFilter: ['class'] });
 }
 
 // Re-render as the form changes. app.js fills the inputs and sets each toggle's aria-pressed when

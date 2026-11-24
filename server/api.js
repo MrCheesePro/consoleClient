@@ -11,7 +11,7 @@ import {
   listReports,
 } from './db/db.js';
 import { authenticateMicrosoft } from './auth/mcAuth.js';
-import { normalizePlayer, mojangName } from './bots/WallBot.js';
+import { normalizePlayer, mojangName, parseMatchQuery, MINOR_RE, buildMatchProfile } from './bots/WallBot.js';
 
 const BOOL_KEYS = new Set([
   'show_chat', 'auto_reconnect', 'sneak', 'anti_afk', 'offline_mode', 'spam_enabled',
@@ -226,6 +226,14 @@ export function createApiRouter({ botManager, emitToUser }) {
     deleteWallPlayer.run(userId, normalizePlayer(req.params.player));
     botManager.wallBroadcast(userId);
     res.json(listWallPlayers.all(userId));
+  });
+
+  // A sample "find me" card for the Matches view. Same parser and minor filter as the bot; never posts.
+  router.get('/match/preview', (req, res) => {
+    const query = parseMatchQuery(`find me ${String(req.query.q || '')}`);
+    if (!query) return res.status(400).json({ error: 'Type what to look for, up to 60 characters.' });
+    if (MINOR_RE.test(query)) return res.status(422).json({ error: 'The bot ignores this one: it reads as asking for a minor.' });
+    res.json({ query, ...buildMatchProfile(query, Math.random, req.query.nsfw === '1') });
   });
 
   router.get('/reports', (req, res) => {

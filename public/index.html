@@ -40,7 +40,8 @@
         <button class="tab" data-view="wall" aria-selected="false"><span class="num" aria-hidden="true">二</span><span>Wall Bot</span></button>
         <button class="tab" data-view="console" aria-selected="false"><span class="num" aria-hidden="true">三</span><span>Console</span></button>
         <button class="tab" data-view="reports" aria-selected="false"><span class="num" aria-hidden="true">四</span><span>Reports</span></button>
-        <button class="tab" data-view="settings" aria-selected="false"><span class="num" aria-hidden="true">五</span><span>Settings</span></button>
+        <button class="tab" data-view="matches" aria-selected="false"><span class="num" aria-hidden="true">五</span><span>Matches</span></button>
+        <button class="tab" data-view="settings" aria-selected="false"><span class="num" aria-hidden="true">六</span><span>Settings</span></button>
       </nav>
       <div class="topbar-end">
         <div class="conn">
@@ -110,9 +111,17 @@
         </div>
       </section>
 
+      <section class="vh" data-for="matches">
+        <div class="vh-text">
+          <p class="kicker">五 · Matches</p>
+          <h2 class="vh-title">Matches</h2>
+          <p class="vh-sentence">Verified players whisper the bot <b>find me a …</b> and get a made-up dating profile posted to Discord. Every profile is fictional.</p>
+        </div>
+      </section>
+
       <section class="vh" data-for="settings">
         <div class="vh-text">
-          <p class="kicker">五 · Settings</p>
+          <p class="kicker">六 · Settings</p>
           <h2 class="vh-title">Settings</h2>
           <p class="vh-sentence">How the bots connect, what they do while you're away, and where they report.</p>
         </div>
@@ -526,11 +535,6 @@
                         <label class="field-label">Ban feed webhook <span class="label-sub">Posts bans from the site when Shiva announces one. Blank = off.</span></label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
                       </div>
-                      <div class="field span-full">
-                        <label class="field-label">Match webhook <span class="label-sub">Verified players whisper "find me a ..." for a made-up fictional profile. Blank = off.</span></label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="match_discord_webhook" />
-                      </div>
-                      <label class="toggle-row span-full"><button class="toggle" data-setting="match_nsfw" aria-pressed="false"></button><span>NSFW match bios <span class="label-sub">point the match webhook at an age-restricted channel</span></span></label>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -655,6 +659,33 @@
               <div class="ledger-meta"><h4>Tickets <span id="reports-count" class="card-meta">0</span></h4><p>Newest first. Click a ticket to open it.</p></div>
               <div class="ledger-fields">
                 <div id="reports-list" class="data-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ Matches ============ -->
+        <div id="view-matches" class="view hidden">
+          <div class="ledger">
+            <div class="ledger-row">
+              <div class="ledger-meta"><h4>Setup</h4><p>Verified players only, always. Unverified players and anything that reads as a minor get no reply. 5 cards per player per hour.</p></div>
+              <div class="ledger-fields form-grid">
+                <div class="field span-full">
+                  <label class="field-label">Match webhook <span class="label-sub">Blank turns matches off; never falls back.</span></label>
+                  <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="match_discord_webhook" />
+                </div>
+                <label class="toggle-row span-full"><button class="toggle" data-setting="match_nsfw" aria-pressed="false"></button><span>NSFW match bios <span class="label-sub">every card leads with a spicy answer; use an age-restricted channel</span></span></label>
+              </div>
+            </div>
+            <div class="ledger-row">
+              <div class="ledger-meta"><h4>Preview</h4><p>A sample card the way Discord shows it. Nothing is posted.</p></div>
+              <div class="ledger-fields form-grid">
+                <div class="field span-full">
+                  <label class="field-label" for="match-preview-q">find me a …</label>
+                  <input id="match-preview-q" class="text-input" type="text" maxlength="60" value="goth mommy" />
+                </div>
+                <div class="span-full"><button id="match-preview-roll" class="btn btn-pill">Roll a card</button></div>
+                <div id="match-preview" class="discord-preview span-full" aria-label="Discord match preview" aria-live="polite"></div>
               </div>
             </div>
           </div>

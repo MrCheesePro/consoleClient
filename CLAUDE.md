@@ -6,7 +6,7 @@ Guidance for working in this repo. Keep it current when structure or conventions
 
 A single-page web control panel for running Minecraft AFK bots via
 [mineflayer](https://github.com/PrismarineJS/mineflayer). Node/Express backend + a
-vanilla-JS SPA. UI views: **Accounts · Wall Bot · Console · Reports · Settings**. State lives in a
+vanilla-JS SPA. UI views: **Accounts · Wall Bot · Console · Reports · Matches · Settings**. State lives in a
 local SQLite file; bot chat/status stream to the browser over one WebSocket.
 
 ## Commands
@@ -25,7 +25,7 @@ There is no build step or bundler — `public/` is served as static files.
 ```
 server/
   index.js          Express + session + HTTP server; upgrades WS on the session cookie
-  api.js            REST: /api/accounts, /api/settings, /api/wall/*, /api/reports (behind requireAuth)
+  api.js            REST: /api/accounts, /api/settings, /api/wall/*, /api/reports, /api/match/preview (behind requireAuth)
   auth/
     siteAuth.js     Panel unlock (shared APP_PASSWORD) + requireAuth middleware
     mcAuth.js       Microsoft device-code flow (prismarine-auth), warms token cache
@@ -203,7 +203,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `buildMatchProfile` makes up the name and age (21–35); the only image is the requester's head.
   `match_nsfw` (default off) adds each type's `spicy` prompt answers to the pool and
   forces one onto every card (always the first prompt).
-  Never scrape, link or picture real people — that was asked for and refused on purpose.
+  The **Matches** view holds both settings and a preview
+  card from `GET /api/match/preview` (same `parseMatchQuery`/`MINOR_RE`/`buildMatchProfile` as the bot,
+  never posts). Never scrape, link or picture real people — that was asked for and refused on purpose.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against
   it — keep that asymmetry if you touch the `messagestr` handler.

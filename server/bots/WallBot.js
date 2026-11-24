@@ -57,6 +57,11 @@ const BAN_LOOKBACK_MS = 10 * 60 * 1000; // only bans this close to the Shiva lin
 // age are made up here, and the only picture is the requester's own Minecraft head.
 export const MATCH_RE = /^\s*find\s+me\s+(?:an?\s+|some\s+)?(.{1,60}?)[\s.!?]*$/i;
 // Anything that reads as asking for a minor is dropped silently. Bare numbers under 18 count too.
+/** The cleaned-up ask from a "find me ..." message, or '' when the message isn't one. */
+export function parseMatchQuery(message) {
+  const m = MATCH_RE.exec(message);
+  return m ? m[1].replace(/[`*_~|<>@#]/g, '').trim() : '';
+}
 export const MINOR_RE = /\b(?:teens?|teenage(?:r|rs)?|young(?:er)?|kids?|child(?:ren)?|minors?|underage|jailbait|loli(?:ta)?|shota|school\s*(?:girl|boy)s?|(?:high|middle)\s*school(?:er)?|pre-?teens?|bab(?:y|ies)|little|petite|tiny|[0-9]|1[0-7])\b/i;
 // One entry per vibe: the stereotypical common names for it (f = women, m = men) and Hinge-style
 // prompt answers in its voice, on the prompts Hinge reports as most successful. First regex hit
@@ -1217,9 +1222,7 @@ export default class WallBot {
    */
   _handleMatch(userId, settings, player, message) {
     const webhook = settings.match_discord_webhook;
-    const m = webhook && MATCH_RE.exec(message);
-    if (!m) return false;
-    const query = m[1].replace(/[`*_~|<>@#]/g, '').trim();
+    const query = webhook && parseMatchQuery(message);
     if (!query) return false;
     if (!getWallPlayer.get(userId, player)?.verified) {
       this._console(userId, `Ignored "find me" from unverified ${player}.`);

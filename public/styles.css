@@ -183,6 +183,7 @@ body {
 .shell:has(#view-wall:not(.hidden)) .vh[data-for="wall"],
 .shell:has(#view-console:not(.hidden)) .vh[data-for="console"],
 .shell:has(#view-reports:not(.hidden)) .vh[data-for="reports"],
+.shell:has(#view-matches:not(.hidden)) .vh[data-for="matches"],
 .shell:has(#view-settings:not(.hidden)) .vh[data-for="settings"] { display: grid; }
 .kicker { margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--text-dim); }
 .vh-title { margin: 0; font-family: var(--serif); font-size: 60px; font-weight: 500; line-height: 1.02; letter-spacing: -0.3px; }
