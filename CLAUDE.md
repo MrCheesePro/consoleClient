@@ -201,7 +201,8 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `match_discord_webhook` (blank = off, no fallback). **Verified only, always** (ignores
   `wall_require_verified`); unverified or `MINOR_RE` hits get no reply. Verified gets `bet that broski`.
   `buildMatchProfile` makes up the name and age (21–35); the only image is the requester's head.
-  `match_nsfw` (default off) adds each type's `spicy` prompt answers to the pool.
+  `match_nsfw` (default off) adds each type's `spicy` prompt answers to the pool and
+  forces one onto every card (always the first prompt).
   Never scrape, link or picture real people — that was asked for and refused on purpose.
 - `BotSession#_redact` strips the verify password out of console lines before they reach the
   panel. The `onChat` observer still gets the raw line, because `WallBot` has to compare against

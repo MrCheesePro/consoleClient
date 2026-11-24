@@ -1889,5 +1889,10 @@ test('find me: parses the ask, refuses minors, keeps ages 21+', () => {
     const qs = buildMatchProfile('goth mommy', Math.random, true).prompts.map(([q]) => q);
     assert.equal(new Set(qs).size, 3, `repeated prompt: ${qs}`);
   }
+  const regular = new Set();
+  for (let i = 0; i < 2000; i++) buildMatchProfile('tomboy').prompts.forEach(([, a]) => regular.add(a));
+  for (let i = 0; i < 200; i++) {
+    assert.ok(!regular.has(buildMatchProfile('tomboy', Math.random, true).prompts[0][1]), 'nsfw card leads with a spicy answer');
+  }
   assert.notEqual(buildMatchProfile('goth', last).prompts[0][1], buildMatchProfile('goth', last, true).prompts[0][1]);
 });

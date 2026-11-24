@@ -554,6 +554,8 @@ export function buildMatchProfile(query, rand = Math.random, nsfw = false) {
   const type = MATCH_TYPES.find((t) => t.re.test(query));
   const pool = nsfw ? [...type.prompts, ...type.spicy] : [...type.prompts];
   const prompts = [];
+  // NSFW on: the first prompt is always a spicy one, the rest come from the combined pool.
+  if (nsfw) prompts.push(pool.splice(type.prompts.length + Math.floor(rand() * type.spicy.length), 1)[0]);
   // Draw without replacement, skipping a prompt question already on the card.
   while (prompts.length < MATCH_PROMPTS_SHOWN && pool.length) {
     const next = pool.splice(Math.floor(rand() * pool.length), 1)[0];
