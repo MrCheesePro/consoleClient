@@ -215,7 +215,9 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   everyone to `''`. The roster nickname (`label`, panel only, no guessing) shows **only** in
   the `pending` list, packed to the 100-char `/msg` limit (splits only when it must); every other
   message, post and log uses the IGN. `confirm`/`deny` accept either. `PATCH /api/wall/players`
-  rejects a nickname that's another player's nickname or IGN, so it always resolves to one player. `_taxTick` runs on every tick **outside** the `wallActive` gate: every 12h it re-pings
+  rejects a nickname that's another player's nickname or IGN, so it always resolves to one player.
+  All tax UI (start/end, per-player tags, nickname, Discord ID, Confirm/Deny, both webhooks) lives in
+  the Wall Bot view's **Tax** section (`data-section-panel="tax"`); the Players roster stays name/verified only. `_taxTick` runs on every tick **outside** the `wallActive` gate: every 12h it re-pings
   only `''` players, and at due posts the overdue list and clears the tax. Announcements (embeds, user
   pings) → `tax_discord_webhook`, else wall webhook. The #tax log (claimed/accepted/denied) is a plain
   code-block `content` post, never an embed → `tax_log_discord_webhook`, else tax, else wall.

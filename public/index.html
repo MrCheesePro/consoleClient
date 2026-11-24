@@ -202,6 +202,7 @@
               <button class="ix" data-section="weewoo" aria-pressed="false"><span class="n" aria-hidden="true">四</span><span class="ix-text"><span class="lbl">Weewoo</span><span class="hint-sm">the alarm</span></span></button>
               <button class="ix" data-section="discord" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Discord</span><span class="hint-sm">where news goes</span></span></button>
               <button class="ix" data-section="players" aria-pressed="false"><span class="n" aria-hidden="true">六</span><span class="ix-text"><span class="lbl">Players</span><span class="hint-sm">who may check</span></span></button>
+              <button class="ix" data-section="tax" aria-pressed="false"><span class="n" aria-hidden="true">七</span><span class="ix-text"><span class="lbl">Tax</span><span class="hint-sm">who owes</span></span></button>
             </nav>
 
             <div class="content">
@@ -535,14 +536,6 @@
                         <label class="field-label">Ban feed webhook <span class="label-sub">Posts bans from the site when Shiva announces one. Blank = off.</span></label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
                       </div>
-                      <div class="field span-full">
-                        <label class="field-label">Tax announcements webhook <span class="label-sub">Start, 12h reminders, overdue. Blank = wall webhook.</span></label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_discord_webhook" />
-                      </div>
-                      <div class="field span-full">
-                        <label class="field-label">Tax log webhook (#tax) <span class="label-sub">Waiting on confirmation / accepted / denied. Blank = tax announcements webhook.</span></label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_log_discord_webhook" />
-                      </div>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -580,7 +573,7 @@
                   </details>
                 </div>
                 <div class="ledger">
-                  <div class="ledger-row">
+                  <div class="ledger-row wide-ledger">
                     <div class="ledger-meta"><h4>Roster <span id="roster-count" class="card-meta">0</span></h4><p>Players added here are verified at once.</p></div>
                     <div class="ledger-fields">
                       <div class="account-inputs">
@@ -594,10 +587,37 @@
                     </div>
                   </div>
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Tax <span id="tax-meta" class="card-meta">none</span></h4>
-                      <p>Tag payers with <b>tax</b> and collectors with <b>admin</b> in the roster. Admins can start one in game:
-                        <code>tax 5m 24hr</code>, <code>pending</code>, <code>confirm &lt;name&gt;</code>, <code>deny &lt;name&gt;</code>, <code>tax end</code>.
-                        Payers message <code>paid</code> after depositing to the f bank.</p></div>
+                    <div class="ledger-meta"><h4>Verification</h4><p>Let players add themselves with the faction password.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <label class="toggle-row"><button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button><span>Require verification</span></label>
+                      <div class="field">
+                        <label class="field-label">Faction password</label>
+                        <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
+                          autocomplete="off" data-setting="wall_verify_password" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 七 Tax -->
+              <section class="section" data-section-panel="tax" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Tax</h3>
+                    <p class="section-desc">Collect a faction tax, ping who hasn't paid, confirm who has.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint">Tax admins message the bot <code>tax 5m 24hr</code> to start one, <code>pending</code> to see
+                      who is waiting on confirmation, <code>confirm &lt;name&gt;</code> / <code>deny &lt;name&gt;</code>, and
+                      <code>tax end</code>. Payers deposit to the f bank, then message <code>paid</code>. Discord gets a ping
+                      at the start and every 12h for whoever hasn't paid, and an overdue list at the due time.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Collection <span id="tax-meta" class="card-meta">none</span></h4><p>Starting a new tax puts everyone back to not paid.</p></div>
                     <div class="ledger-fields">
                       <div id="tax-start-form" class="account-inputs">
                         <div class="input-group">
@@ -612,19 +632,26 @@
                       </div>
                       <div id="tax-running" class="account-inputs" hidden>
                         <span id="tax-summary" class="leaderboard-name"></span>
-                        <button id="tax-end" class="btn btn-night">End tax</button>
+                        <button id="tax-end" class="btn btn-danger">End tax</button>
                       </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row wide-ledger">
+                    <div class="ledger-meta"><h4>Players</h4><p>Click <b>tax</b> for who pays and <b>admin</b> for who collects. The nickname only shows in the in-game <code>pending</code> list. Players come from the roster.</p></div>
+                    <div class="ledger-fields">
                       <div id="tax-list" class="data-list"></div>
                     </div>
                   </div>
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Verification</h4><p>Let players add themselves with the faction password.</p></div>
+                    <div class="ledger-meta"><h4>Discord</h4><p>Where tax announcements and the payment log go.</p></div>
                     <div class="ledger-fields form-grid">
-                      <label class="toggle-row"><button class="toggle" data-setting="wall_require_verified" aria-pressed="false"></button><span>Require verification</span></label>
-                      <div class="field">
-                        <label class="field-label">Faction password</label>
-                        <input class="text-input" type="password" placeholder="blank = nobody can self-verify"
-                          autocomplete="off" data-setting="wall_verify_password" />
+                      <div class="field span-full">
+                        <label class="field-label">Tax announcements webhook <span class="label-sub">Start, 12h reminders, overdue. Blank = wall webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_discord_webhook" />
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Tax log webhook (#tax) <span class="label-sub">Waiting on confirmation / accepted / denied. Blank = tax announcements webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_log_discord_webhook" />
                       </div>
                     </div>
                   </div>

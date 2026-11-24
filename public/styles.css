@@ -458,9 +458,15 @@ textarea.text-input {
 .roster-badge.ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .roster-badge.warn { color: var(--warn); border-color: currentColor; }
 .tax-chip { cursor: pointer; background: none; }
+/* Roster and tax player lists run the full width under their heading (not just the right column), so
+   a name, its tags and both inputs fit on one line. Inputs above the list stay in the right column. */
+.wide-ledger .ledger-fields { display: contents; }
+.wide-ledger .data-list { grid-column: 1 / -1; }
+.roster-row .leaderboard-name, .tax-row .leaderboard-name { min-width: 120px; font-weight: 500; }
+.tax-actions { display: flex; gap: 4px; justify-content: flex-end; min-width: 132px; }
 .discord-id-input, .nick-input { width: 150px; min-height: 30px; padding: 4px 8px; font-size: 12px; }
 .nick-input { width: 96px; }
-@media (max-width: 560px) { .discord-id-input { width: 96px; } .nick-input { width: 72px; } }
+@media (max-width: 560px) { .discord-id-input { width: 96px; } .nick-input { width: 72px; } .roster-row, .tax-row { flex-wrap: wrap; padding-block: 6px; } .roster-row .leaderboard-name, .tax-row .leaderboard-name { flex: 1 0 100%; } }
 
 
 /* ---------- Wall bot ---------- */

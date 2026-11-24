@@ -762,7 +762,7 @@ function renderRoster() {
   }
   for (const entry of wall.roster) {
     const row = document.createElement('div');
-    row.className = 'leaderboard-row';
+    row.className = 'leaderboard-row roster-row';
 
     const name = document.createElement('span');
     name.className = 'leaderboard-name';
@@ -778,32 +778,7 @@ function renderRoster() {
     del.title = `Remove ${entry.player}`;
     del.onclick = () => removeRosterPlayer(entry.player);
 
-    // Tax tags and the Discord ID used to ping them. Saved on change over REST.
-    const chip = (key, text) => {
-      const b = document.createElement('button');
-      b.className = 'roster-badge tax-chip' + (entry[key] ? ' ok' : '');
-      b.textContent = text;
-      b.setAttribute('aria-pressed', String(!!entry[key]));
-      b.title = key === 'tax' ? 'Pays tax' : 'Tax admin: can start and confirm taxes';
-      b.onclick = () => patchRosterPlayer(entry.player, { [key]: !entry[key] });
-      return b;
-    };
-    const discord = document.createElement('input');
-    discord.className = 'text-input discord-id-input';
-    discord.placeholder = 'Discord ID';
-    discord.inputMode = 'numeric';
-    discord.value = entry.discord_id || '';
-    discord.title = 'Discord user ID (right-click user → Copy User ID), for tax pings';
-    discord.onchange = () => patchRosterPlayer(entry.player, { discord_id: discord.value.trim() });
-
-    const nick = document.createElement('input');
-    nick.className = 'text-input nick-input';
-    nick.placeholder = 'nickname';
-    nick.value = entry.label || '';
-    nick.title = 'Short name the bot uses only in the in-game "pending" list (blank = their IGN)';
-    nick.onchange = () => patchRosterPlayer(entry.player, { label: nick.value.trim() });
-
-    row.append(name, badge, chip('tax', 'tax'), chip('tax_admin', 'admin'), nick, discord, del);
+    row.append(name, badge, del);
     list.appendChild(row);
   }
   renderTax();
@@ -835,39 +810,71 @@ function renderTax() {
   }
   const list = $('tax-list');
   list.innerHTML = '';
-  if (!payers.length) {
+  if (!wall.roster.length) {
     const empty = document.createElement('div');
     empty.className = 'leaderboard-empty';
-    empty.textContent = 'Nobody is tagged tax yet.';
+    empty.textContent = 'Add players in Players first.';
     list.appendChild(empty);
     return;
   }
-  // Waiting-on-confirmation first: that's the queue an admin acts on.
-  const order = { claimed: 0, '': 1, paid: 2 };
-  for (const entry of [...payers].sort((a, b) => order[a.tax_status] - order[b.tax_status])) {
+  // Taxed players first, waiting-on-confirmation at the top (the queue an admin acts on), then the
+  // rest of the roster so anyone can be tagged from here.
+  const order = (r) => (r.tax ? { claimed: 0, '': 1, paid: 2 }[r.tax_status] : 3);
+  for (const entry of [...wall.roster].sort((a, b) => order(a) - order(b))) {
     const row = document.createElement('div');
-    row.className = 'leaderboard-row';
+    row.className = 'leaderboard-row tax-row';
     const name = document.createElement('span');
     name.className = 'leaderboard-name';
     name.textContent = entry.display_name || entry.player;
-    const badge = document.createElement('span');
-    badge.className = 'roster-badge' + (entry.tax_status === 'paid' ? ' ok' : entry.tax_status === 'claimed' ? ' warn' : '');
-    badge.textContent = tax ? TAX_STATUS[entry.tax_status] : 'tax';
-    row.append(name, badge);
-    if (tax && entry.tax_status !== 'paid') {
+    row.append(name);
+    if (tax && entry.tax) {
+      const badge = document.createElement('span');
+      badge.className = 'roster-badge' + (entry.tax_status === 'paid' ? ' ok' : entry.tax_status === 'claimed' ? ' warn' : '');
+      badge.textContent = TAX_STATUS[entry.tax_status];
+      row.append(badge);
+    }
+
+    // Tags, nickname and Discord ID save on change over REST.
+    const chip = (key, text) => {
+      const b = document.createElement('button');
+      b.className = 'roster-badge tax-chip' + (entry[key] ? ' ok' : '');
+      b.textContent = text;
+      b.setAttribute('aria-pressed', String(!!entry[key]));
+      b.title = key === 'tax' ? 'Pays tax' : 'Tax admin: can start and confirm taxes';
+      b.onclick = () => patchRosterPlayer(entry.player, { [key]: !entry[key] });
+      return b;
+    };
+    const nick = document.createElement('input');
+    nick.className = 'text-input nick-input';
+    nick.placeholder = 'nickname';
+    nick.value = entry.label || '';
+    nick.title = 'Short name the bot uses only in the in-game "pending" list (blank = their IGN)';
+    nick.onchange = () => patchRosterPlayer(entry.player, { label: nick.value.trim() });
+    const discord = document.createElement('input');
+    discord.className = 'text-input discord-id-input';
+    discord.placeholder = 'Discord ID';
+    discord.inputMode = 'numeric';
+    discord.value = entry.discord_id || '';
+    discord.title = 'Discord user ID (right-click user → Copy User ID), for tax pings';
+    discord.onchange = () => patchRosterPlayer(entry.player, { discord_id: discord.value.trim() });
+
+    const actions = document.createElement('span');
+    actions.className = 'tax-actions';
+    if (tax && entry.tax && entry.tax_status !== 'paid') {
       const ok = document.createElement('button');
       ok.className = 'link-btn';
       ok.textContent = 'Confirm';
       ok.onclick = () => wsSend({ type: 'taxConfirm', player: entry.player });
-      row.append(ok);
+      actions.append(ok);
     }
-    if (tax && entry.tax_status === 'claimed') {
+    if (tax && entry.tax && entry.tax_status === 'claimed') {
       const no = document.createElement('button');
       no.className = 'link-btn danger';
       no.textContent = 'Deny';
       no.onclick = () => wsSend({ type: 'taxDeny', player: entry.player });
-      row.append(no);
+      actions.append(no);
     }
+    row.append(chip('tax', 'tax'), chip('tax_admin', 'admin'), nick, discord, actions);
     list.appendChild(row);
   }
 }
