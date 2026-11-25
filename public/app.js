@@ -880,7 +880,7 @@ function renderTax() {
 }
 
 $('tax-start').onclick = () => {
-  wsSend({ type: 'taxStart', amount: $('tax-amount').value.trim(), duration: $('tax-duration').value.trim() });
+  wsSend({ type: 'taxStart', amount: $('tax-amount').value.trim() + $('tax-amount-unit').value, duration: $('tax-duration').value.trim() + $('tax-duration-unit').value });
 };
 $('tax-end').onclick = () => wsSend({ type: 'taxEnd' });
 

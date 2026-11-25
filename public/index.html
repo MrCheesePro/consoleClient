@@ -622,11 +622,26 @@
                       <div id="tax-start-form" class="account-inputs">
                         <div class="input-group">
                           <label class="field-label" for="tax-amount">Amount</label>
-                          <input id="tax-amount" class="text-input" placeholder="5m" />
+                          <div class="unit-pair">
+                            <input id="tax-amount" class="text-input" type="number" min="0" step="any" value="5" />
+                            <select id="tax-amount-unit" class="select-input">
+                              <option value="">$</option>
+                              <option value="k">thousand</option>
+                              <option value="m" selected>million</option>
+                              <option value="b">billion</option>
+                            </select>
+                          </div>
                         </div>
                         <div class="input-group">
                           <label class="field-label" for="tax-duration">Due in</label>
-                          <input id="tax-duration" class="text-input" placeholder="24hr" />
+                          <div class="unit-pair">
+                            <input id="tax-duration" class="text-input" type="number" min="0" step="any" value="24" />
+                            <select id="tax-duration-unit" class="select-input">
+                              <option value="min">minutes</option>
+                              <option value="h" selected>hours</option>
+                              <option value="d">days</option>
+                            </select>
+                          </div>
                         </div>
                         <button id="tax-start" class="btn btn-green">Start tax</button>
                       </div>
