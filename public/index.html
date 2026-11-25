@@ -642,6 +642,52 @@
                       <div id="tax-list" class="data-list"></div>
                     </div>
                   </div>
+                  <div class="ledger-row wide-ledger">
+                    <div class="ledger-meta"><h4>On Discord</h4><p>What each post looks like. Pings only reach players with a Discord ID; anyone without one is listed under <b>No Discord linked</b>.</p></div>
+                    <div class="discord-preview tax-preview" aria-label="Discord tax post examples">
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">Tax start</span><span class="dp-where">announcements · pings everyone taxed</span></div>
+                        <div class="dp-ping"><span class="dp-mention">@Rawr</span> <span class="dp-mention">@Wolf</span> <span class="dp-mention">@Ghost</span></div>
+                        <div class="dp-embed tax-embed">
+                          <div class="dp-title">💰 Tax collection started</div>
+                          <div class="dp-desc">Everyone on the tax list owes <strong>$5,000,000</strong>.<br>Due Tuesday, November 25 at 9:00 PM (<span class="dp-time">in a day</span>).<br>Deposit to the f bank, then <code>/msg bot paid</code>.</div>
+                          <div class="dp-fields"><div class="dp-field wide"><div class="dp-field-k">Taxed</div><div>uloserawr, UncleWolff, zGhostx</div></div></div>
+                          <div class="dp-footer">Started by zGhostx</div>
+                        </div>
+                      </div>
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">Every 12h</span><span class="dp-where">announcements · pings only unpaid</span></div>
+                        <div class="dp-ping"><span class="dp-mention">@Wolf</span></div>
+                        <div class="dp-embed tax-embed">
+                          <div class="dp-title">⏰ Tax reminder: 12h left</div>
+                          <div class="dp-desc"><strong>$5,000,000</strong> due <span class="dp-time">in 12 hours</span>.<br>Deposit to the f bank, then <code>/msg bot paid</code>.</div>
+                          <div class="dp-fields">
+                            <div class="dp-field wide"><div class="dp-field-k">Not paid</div><div>UncleWolff</div></div>
+                            <div class="dp-field wide"><div class="dp-field-k">Awaiting confirmation</div><div>uloserawr</div></div>
+                            <div class="dp-field"><div class="dp-field-k">Paid</div><div>1/3</div></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">At the due time</span><span class="dp-where">announcements · pings unpaid + unconfirmed, then ends the tax</span></div>
+                        <div class="dp-ping"><span class="dp-mention">@Wolf</span></div>
+                        <div class="dp-embed tax-embed">
+                          <div class="dp-title">🚨 Tax overdue</div>
+                          <div class="dp-desc">The $5,000,000 tax was due <span class="dp-time">a few seconds ago</span>.</div>
+                          <div class="dp-fields">
+                            <div class="dp-field wide"><div class="dp-field-k">Did not pay</div><div>UncleWolff</div></div>
+                            <div class="dp-field"><div class="dp-field-k">Paid</div><div>2/3</div></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">Payment log</span><span class="dp-where">#tax log · no pings</span></div>
+                        <pre class="dp-codeblock">uloserawr is waiting on confirmation</pre>
+                        <pre class="dp-codeblock">uloserawr's payment accepted by zGhostx</pre>
+                        <pre class="dp-codeblock">UncleWolff's payment denied by zGhostx</pre>
+                      </div>
+                    </div>
+                  </div>
                   <div class="ledger-row">
                     <div class="ledger-meta"><h4>Discord</h4><p>Where tax announcements and the payment log go.</p></div>
                     <div class="ledger-fields form-grid">

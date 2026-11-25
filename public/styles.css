@@ -461,7 +461,8 @@ textarea.text-input {
 /* Roster and tax player lists run the full width under their heading (not just the right column), so
    a name, its tags and both inputs fit on one line. Inputs above the list stay in the right column. */
 .wide-ledger .ledger-fields { display: contents; }
-.wide-ledger .data-list { grid-column: 1 / -1; }
+.wide-ledger .data-list, .wide-ledger .ledger-meta, .wide-ledger .discord-preview { grid-column: 1 / -1; }
+.wide-ledger .ledger-meta p { max-width: none; }
 .roster-row .leaderboard-name, .tax-row .leaderboard-name { min-width: 120px; font-weight: 500; }
 .tax-actions { display: flex; gap: 4px; justify-content: flex-end; min-width: 132px; }
 .discord-id-input, .nick-input { width: 150px; min-height: 30px; padding: 4px 8px; font-size: 12px; }
@@ -579,6 +580,11 @@ textarea.text-input {
 .dp-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; margin-top: 8px; }
 .dp-field.wide { grid-column: 1 / -1; }
 .dp-field-k { font-weight: 600; color: #F2F3F5; font-size: 13px; margin-bottom: 2px; }
+.tax-embed { border-left-color: #2ECC71; }
+.dp-ping { margin-bottom: 4px; }
+.dp-mention { background: rgba(88,101,242,.3); color: #C9CDFB; border-radius: 3px; padding: 0 2px; font-weight: 500; }
+.dp-time { background: rgba(255,255,255,.06); border-radius: 3px; padding: 0 2px; }
+.dp-codeblock { max-width: 520px; margin: 4px 0 0; background: #2B2D31; border: 1px solid #1E1F22; border-radius: 4px; padding: 8px 10px; font-family: var(--mono); font-size: 12.5px; color: #DBDEE1; white-space: pre-wrap; }
 .dp-footer { margin-top: 8px; font-size: 12px; color: #B5BAC1; }
 .dp-ping { display: inline-block; margin-bottom: 4px; padding: 0 3px; border-radius: 3px; background: rgba(88, 101, 242, 0.3); color: #C9CDFB; font-weight: 500; }
 .dp-when { margin: 0 0 6px; font-size: 12.5px; color: #B5BAC1; }
