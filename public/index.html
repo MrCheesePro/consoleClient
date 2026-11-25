@@ -785,6 +785,18 @@
               <option value="all">All accounts</option>
             </select>
           </div>
+          <!-- History: every line is kept server-side for 30 days. Today streams live; an older
+               day or a search shows saved lines only. -->
+          <div class="console-bar">
+            <label class="sr-only" for="console-day">Day</label>
+            <select id="console-day" class="select-input console-select console-day">
+              <option value="today">Today (live)</option>
+            </select>
+            <label class="sr-only" for="console-search">Search chat</label>
+            <input id="console-search" class="text-input console-search" type="search" placeholder="Search all chat…" autocomplete="off" />
+            <label class="toggle-row console-follow"><button id="console-follow" class="toggle" aria-pressed="true"></button><span>Follow chat</span></label>
+          </div>
+          <div id="console-note" class="wall-note"></div>
           <div id="console-output" class="console-output"></div>
           <div class="console-input-row">
             <label class="sr-only" for="chat-input">Chat message</label>

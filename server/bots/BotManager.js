@@ -2,6 +2,7 @@ import BotSession from './BotSession.js';
 import WallBot, { stripFormatting, parseTaxAmount, parseTaxDuration } from './WallBot.js';
 import {
   getSettings, listAccounts, getAccountById, getLeaderboard, upsertLeaderboard,
+  logChatLine, pruneChat,
 } from '../db/db.js';
 
 const MAX_BOTS_PER_USER = Number(process.env.MAX_BOTS_PER_USER || 20);
@@ -73,7 +74,17 @@ export function parseProxyPool(text) {
  */
 export default class BotManager {
   constructor({ emitToUser }) {
-    this.emitToUser = emitToUser;         // (userId, {type, ...payload}) => void
+    // (userId, {type, ...payload}) => void. Every consoleLine (bots and wall bot alike) passes
+    // through here, so this is the one place the chat log is written.
+    this.emitToUser = (userId, msg) => {
+      if (msg.type === 'consoleLine') {
+        msg.ts = Date.now();
+        try { logChatLine(userId, msg); } catch (e) { console.error('chat log:', e.message); }
+      }
+      emitToUser(userId, msg);
+    };
+    pruneChat();
+    setInterval(() => pruneChat(), 60 * 60 * 1000).unref();
     this.sessions = new Map();            // key -> BotSession
     this._lbAutoTimers = new Map();       // userId -> pending post-online refresh timer
     this._lbBusy = new Set();             // userIds with a refresh in flight (avoid overlap)

@@ -180,6 +180,19 @@ db.exec(`
     kind       TEXT    NOT NULL DEFAULT 'report',
     created_at INTEGER NOT NULL
   );
+
+  -- Every console line (chat, whispers, panel log), so the console has history across page
+  -- loads and can be browsed by day or searched. Pruned to CHAT_KEEP_DAYS.
+  CREATE TABLE IF NOT EXISTS chat_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT    NOT NULL,
+    account_id TEXT,
+    username   TEXT    NOT NULL DEFAULT '',
+    kind       TEXT    NOT NULL DEFAULT 'system',
+    text       TEXT    NOT NULL,
+    ts         INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_log_user_ts ON chat_log(user_id, ts);
 `);
 
 // The reporter's choice: anonymous hides the sender from Discord (the panel always sees it).
@@ -576,3 +589,42 @@ export const resetWallStats = db.transaction((userId) => {
 });
 
 export default db;
+
+// ---- Chat log ----
+// Days are bucketed on the Node process's local clock (TZ in .env), like quiet hours.
+export const CHAT_KEEP_DAYS = 30;
+const CHAT_LIMIT = 5000;
+const chatCols = `id, account_id AS accountId, username, kind, text, ts, date(ts / 1000, 'unixepoch', 'localtime') AS day`;
+const insertChat = db.prepare(
+  `INSERT INTO chat_log (user_id, account_id, username, kind, text, ts) VALUES (?, ?, ?, ?, ?, ?)`
+);
+export function logChatLine(userId, { accountId, username, kind, text, ts }) {
+  insertChat.run(userId, accountId ?? null, username || '', kind || 'system', String(text), ts);
+}
+// ponytail: GROUP BY scans the whole log; fine at 30 days, add a day column if it gets slow.
+export const listChatDays = db.prepare(`
+  SELECT date(ts / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS count
+  FROM chat_log WHERE user_id = ? GROUP BY day ORDER BY day DESC
+`);
+const chatRange = db.prepare(
+  `SELECT ${chatCols} FROM chat_log WHERE user_id = ? AND ts >= ? AND ts < ? ORDER BY id DESC LIMIT ${CHAT_LIMIT}`
+);
+/** Lines for one local day ('YYYY-MM-DD'), oldest first, capped to the newest CHAT_LIMIT. */
+export function chatForDay(userId, day) {
+  const start = new Date(`${day}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return [];
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  return chatRange.all(userId, start.getTime(), end.getTime()).reverse();
+}
+const chatSearch = db.prepare(
+  `SELECT ${chatCols} FROM chat_log WHERE user_id = ? AND text LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1000`
+);
+/** Case-insensitive substring search across every kept day, newest 1000 hits, oldest first. */
+export function searchChat(userId, q) {
+  const like = '%' + String(q).replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+  return chatSearch.all(userId, like).reverse();
+}
+const pruneChatStmt = db.prepare(`DELETE FROM chat_log WHERE ts < ?`);
+export function pruneChat() {
+  pruneChatStmt.run(Date.now() - CHAT_KEEP_DAYS * 24 * 60 * 60 * 1000);
+}

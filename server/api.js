@@ -8,7 +8,7 @@ import {
   getAccountById, getSettings, updateSettings,
   getWallState, allWallCheckers, listWallPlayers, upsertWallPlayer, deleteWallPlayer, getWallPlayer, updateWallPlayerTax,
   resetWallStats, setDisplayName,
-  listReports,
+  listReports, listChatDays, chatForDay, searchChat,
 } from './db/db.js';
 import { authenticateMicrosoft } from './auth/mcAuth.js';
 import { normalizePlayer, mojangName, parseMatchQuery, MINOR_RE, buildMatchProfile } from './bots/WallBot.js';
@@ -271,6 +271,18 @@ export function createApiRouter({ botManager, emitToUser }) {
 
   router.get('/reports', (req, res) => {
     res.json(listReports.all(req.session.userId));
+  });
+
+  // Console history: ?q= searches every kept day, else ?day=YYYY-MM-DD (default: just the day list).
+  router.get('/chat', (req, res) => {
+    const userId = req.session.userId;
+    const q = String(req.query.q || '').trim().slice(0, 200);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const day = req.query.day === 'today' ? today : String(req.query.day || '');
+    const lines = q ? searchChat(userId, q)
+      : /^\d{4}-\d{2}-\d{2}$/.test(day) ? chatForDay(userId, day) : [];
+    res.json({ today, days: listChatDays.all(userId), lines });
   });
 
   return router;

@@ -56,6 +56,7 @@ async function showApp() {
   updateAccountForm();
   routeFromHash();
   connectWs();
+  loadConsole();
 }
 
 // ===== View routing =====
@@ -908,26 +909,197 @@ function applyConsoleFilter() {
   }
 }
 
-function appendConsole({ accountId, username, text, error, kind = 'system' }) {
+const CONSOLE_MAX_LINES = 5000;
+const pad2 = (n) => String(n).padStart(2, '0');
+const localDay = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const dayLabel = (day) => new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+// Live lines only land while the console shows today with no search; otherwise they'd mix into
+// a saved day. `loading` buffers lines that arrive while today's history is being fetched.
+let consoleLive = true;
+let consoleLoading = null;
+let consoleLastTs = 0;
+let consoleLastDay = '';
+
+let consoleFollow = true;
+try { consoleFollow = localStorage.getItem('consoleFollow') !== '0'; } catch { /* storage blocked */ }
+$('console-follow').setAttribute('aria-pressed', String(consoleFollow));
+$('console-follow').onclick = () => {
+  consoleFollow = !consoleFollow;
+  $('console-follow').setAttribute('aria-pressed', String(consoleFollow));
+  try { localStorage.setItem('consoleFollow', consoleFollow ? '1' : '0'); } catch { /* storage blocked */ }
+  if (consoleFollow) $('console-output').scrollTop = $('console-output').scrollHeight;
+};
+
+// Search term to <mark> in rendered lines: the live search, or the term a jump came from.
+let consoleMark = '';
+let consoleToday = '';
+
+// Appends `text` to `el`, wrapping every case-insensitive hit of consoleMark in <mark>.
+function appendMarked(el, text) {
+  if (!consoleMark) { el.appendChild(document.createTextNode(text)); return; }
+  const lower = text.toLowerCase();
+  const term = consoleMark.toLowerCase();
+  let i = 0;
+  for (let j = lower.indexOf(term); j !== -1; j = lower.indexOf(term, i)) {
+    if (j > i) el.appendChild(document.createTextNode(text.slice(i, j)));
+    const m = document.createElement('mark');
+    m.textContent = text.slice(j, j + term.length);
+    el.appendChild(m);
+    i = j + term.length;
+  }
+  if (i < text.length) el.appendChild(document.createTextNode(text.slice(i)));
+}
+
+function makeConsoleLine({ id, day, accountId, username, text, error, kind = 'system', ts = Date.now() }) {
   const lineKind = error ? 'error' : kind;
-  const out = $('console-output');
   const line = document.createElement('div');
   line.className = `console-line kind-${lineKind}` + (error ? ' err' : '');
   line.dataset.kind = lineKind;
   if (accountId) line.dataset.accountId = accountId;
+  if (id) line.dataset.id = id;
+  if (day) line.dataset.day = day;
+  const time = document.createElement('span');
+  time.className = 'ts';
+  time.textContent = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  line.appendChild(time);
   if (username) {
     const who = document.createElement('span');
     who.className = 'who';
     who.textContent = `[${username}] `;
     line.appendChild(who);
   }
-  line.appendChild(document.createTextNode(text));
+  appendMarked(line, text);
   if (!lineMatchesTarget(line)) line.classList.add('hidden');
-  out.appendChild(line);
-  out.scrollTop = out.scrollHeight;
-  // Trim to last 500 lines.
-  while (out.childElementCount > 500) out.removeChild(out.firstChild);
+  return line;
 }
+
+// Adds lines with a divider whenever the day changes, then trims and (maybe) scrolls.
+function pushConsoleLines(lines) {
+  const out = $('console-output');
+  // Following only drags the view down if you're already at the bottom; scrolled up, it stays put.
+  const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 60;
+  const frag = document.createDocumentFragment();
+  for (const l of lines) {
+    const ts = l.ts || Date.now();
+    const day = localDay(ts);
+    if (day !== consoleLastDay) {
+      consoleLastDay = day;
+      const div = document.createElement('div');
+      div.className = 'console-day-divider';
+      div.textContent = dayLabel(day);
+      frag.appendChild(div);
+    }
+    consoleLastTs = Math.max(consoleLastTs, ts);
+    frag.appendChild(makeConsoleLine({ ...l, ts }));
+  }
+  out.appendChild(frag);
+  while (out.childElementCount > CONSOLE_MAX_LINES) out.removeChild(out.firstChild);
+  if (consoleFollow && atBottom) out.scrollTop = out.scrollHeight;
+}
+
+function appendConsole(line) {
+  if (consoleLoading) { consoleLoading.push(line); return; }
+  if (consoleLive) pushConsoleLines([line]);
+}
+
+function resetConsoleOutput() {
+  $('console-output').innerHTML = '';
+  consoleLastDay = '';
+  consoleLastTs = 0;
+}
+
+let consoleSeq = 0;
+// `jump` ({ id, day, term }) opens the day a search hit is on and scrolls to that line.
+async function loadConsole(jump = null) {
+  const seq = ++consoleSeq;
+  const q = jump ? '' : $('console-search').value.trim();
+  if (jump) {
+    $('console-search').value = '';
+    $('console-day').value = jump.day === consoleToday ? 'today' : jump.day;
+    if ($('console-day').value !== jump.day && jump.day !== consoleToday) {
+      // Day not in the dropdown yet (list is refreshed below); add it so the select can hold it.
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = jump.day;
+      $('console-day').appendChild(opt);
+      $('console-day').value = jump.day;
+    }
+  }
+  const day = $('console-day').value;
+  consoleMark = jump ? jump.term : q;
+  consoleLive = !q && day === 'today';
+  consoleLoading = consoleLive ? [] : null;
+  $('console-output').classList.toggle('searching', !!q);
+  const url = q ? `/api/chat?q=${encodeURIComponent(q)}` : `/api/chat?day=${encodeURIComponent(day)}`;
+  let data = null;
+  try { data = await api(url); } catch (e) {
+    if (seq === consoleSeq) $('console-note').textContent = `Couldn't load chat history: ${e.message}`;
+  }
+  if (seq !== consoleSeq) return; // a newer request (typing in search) replaced this one
+  const buffered = consoleLoading || [];
+  consoleLoading = null;
+  if (!data) { pushConsoleLines(buffered); return; }
+
+  consoleToday = data.today;
+  renderConsoleDays(data.days, data.today);
+  resetConsoleOutput();
+  pushConsoleLines(data.lines);
+  const historyEnd = consoleLastTs;
+  pushConsoleLines(buffered.filter((l) => !l.ts || l.ts > historyEnd));
+  const out = $('console-output');
+  out.scrollTop = out.scrollHeight;
+  const n = data.lines.length;
+  const note = $('console-note');
+  note.textContent = q
+    ? `${n.toLocaleString()} line${n === 1 ? '' : 's'} matching "${q}"${n >= 1000 ? ' (newest 1000)' : ''}. Click a line to jump to it.`
+    : consoleLive ? '' : `Saved chat for ${dayLabel(day)} (${n.toLocaleString()} lines) — live chat paused.`;
+
+  if (jump) {
+    const target = out.querySelector(`.console-line[data-id="${jump.id}"]`);
+    if (target) {
+      target.classList.remove('hidden'); // the kind/account filter must not hide the line you jumped to
+      target.classList.add('jumped');
+      target.scrollIntoView({ block: 'center' });
+    }
+    note.textContent = target
+      ? `Jumped to "${jump.term}" on ${dayLabel(jump.day)}. `
+      : `That line is older than the ${CONSOLE_MAX_LINES.toLocaleString()} newest of ${dayLabel(jump.day)}, so it can't be shown. `;
+    const back = document.createElement('button');
+    back.className = 'link-btn';
+    back.textContent = 'Back to results';
+    back.onclick = () => { $('console-search').value = jump.term; loadConsole(); };
+    note.appendChild(back);
+  }
+}
+
+// In search results, clicking a line opens its day scrolled to it.
+$('console-output').addEventListener('click', (e) => {
+  if (!$('console-output').classList.contains('searching')) return;
+  const line = e.target.closest('.console-line[data-id]');
+  if (!line || window.getSelection().toString()) return; // let people select text without jumping
+  loadConsole({ id: line.dataset.id, day: line.dataset.day, term: $('console-search').value.trim() });
+});
+
+function renderConsoleDays(days, today) {
+  const sel = $('console-day');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="today">Today (live)</option>';
+  for (const { day, count } of days) {
+    if (day === today) continue;
+    const opt = document.createElement('option');
+    opt.value = day;
+    opt.textContent = `${dayLabel(day)} · ${count.toLocaleString()}`;
+    sel.appendChild(opt);
+  }
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : 'today';
+}
+
+$('console-day').addEventListener('change', () => { $('console-search').value = ''; loadConsole(); });
+let consoleSearchTimer = null;
+$('console-search').addEventListener('input', () => {
+  clearTimeout(consoleSearchTimer);
+  consoleSearchTimer = setTimeout(loadConsole, 300);
+});
 
 function sendChat() {
   const input = $('chat-input');
@@ -938,7 +1110,7 @@ function sendChat() {
 }
 $('send-btn').onclick = sendChat;
 $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
-$('clear-console').onclick = () => { $('console-output').innerHTML = ''; };
+$('clear-console').onclick = resetConsoleOutput;
 
 // ===== MSA modal =====
 function showMsaModal(code) {
