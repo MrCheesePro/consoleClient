@@ -61,6 +61,35 @@
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --input-bg: #FBF8F2;
+  --num: #6F6A60;
+  --hover-wash: rgba(236, 229, 216, 0.5);
+}
+
+/* Night mode: same tokens, dark paper. Toggled from the top bar (ui.js), saved in localStorage. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141311;
+  --surface: #1C1A17;
+  --surface-2: #24211D;
+  --surface-3: #2E2A25;
+  --border: #35302A;
+  --border-hi: #4A433A;
+  --text: #ECE6DA;
+  --text-dim: #B5AC9C;
+  --text-faint: #8F877A;
+  --accent-text: #E0B26E;
+  --ok: #9DB57F;
+  --warn: #D2A06E;
+  --err: #E5796B;
+  --err-soft: rgba(229, 121, 107, 0.1);
+  --night: #0F0E0C;
+  --night-2: #1A1815;
+  --night-border: #2C2822;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.3);
+  --input-bg: #181613;
+  --num: #8F877A;
+  --hover-wash: rgba(255, 255, 255, 0.04);
 }
 
 body {
@@ -159,7 +188,7 @@ body {
   cursor: pointer;
   transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
 }
-.tab .num { font-family: var(--serif); font-size: 19px; color: #6F6A60; transition: color 0.18s var(--ease); }
+.tab .num { font-family: var(--serif); font-size: 19px; color: var(--num); transition: color 0.18s var(--ease); }
 .tab:hover { color: var(--text); }
 .tab[aria-selected="true"] { color: var(--text); font-weight: 500; border-bottom-color: var(--accent); }
 .tab[aria-selected="true"] .num { color: var(--accent-text); }
@@ -255,8 +284,8 @@ body {
   text-align: left; cursor: pointer; font-family: var(--sans); color: var(--text-dim);
   transition: color 0.18s var(--ease), background 0.18s var(--ease);
 }
-.ix:hover { color: var(--text); background: rgba(236, 229, 216, 0.45); }
-.ix .n { font-family: var(--serif); font-size: 22px; color: #6F6A60; width: 22px; flex: 0 0 auto; transition: color 0.18s var(--ease); }
+.ix:hover { color: var(--text); background: var(--hover-wash); }
+.ix .n { font-family: var(--serif); font-size: 22px; color: var(--num); width: 22px; flex: 0 0 auto; transition: color 0.18s var(--ease); }
 .ix-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ix .lbl { font-size: 15px; }
 .ix .hint-sm { font-size: 12px; color: var(--text-dim); }
@@ -317,7 +346,7 @@ details.preview-drop > .discord-preview, details.preview-drop > .form-grid { mar
 .text-input, .select-input {
   width: 100%; height: 38px; padding: 0 12px;
   border: 1px solid var(--border-hi); border-radius: 7px;
-  background: #FBF8F2; color: var(--text);
+  background: var(--input-bg); color: var(--text);
   font-family: var(--sans); font-size: 14px;
   transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
@@ -326,7 +355,7 @@ textarea.text-input {
   font-family: var(--mono); font-size: 12.5px; line-height: 1.55; resize: vertical;
 }
 .text-input::placeholder { color: var(--text-faint); }
-.text-input:hover, .select-input:hover { border-color: #B9AC94; }
+.text-input:hover, .select-input:hover { border-color: var(--text-faint); }
 .text-input:focus, .select-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .select-input { cursor: pointer; }
 
@@ -412,7 +441,7 @@ textarea.text-input {
   font-size: 14px; cursor: pointer;
   transition: background 0.16s var(--ease);
 }
-.account-row:hover { background: rgba(236, 229, 216, 0.5); }
+.account-row:hover { background: var(--hover-wash); }
 .account-row.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .account-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-tag, .account-status, .account-metrics { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
@@ -483,6 +512,10 @@ textarea.text-input {
   transition: color 0.2s var(--ease), border-color 0.2s var(--ease), background 0.2s var(--ease);
 }
 .wall-state.raid { font-weight: 600; animation: pulseRingRed 1.2s infinite; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack > .wall-confirm, .stack > .wall-note { margin-top: 0; }
+.stack > .wall-note:empty { display: none; }
+.theme-switch { min-height: 44px; font-size: 14px; color: var(--text-dim); gap: 8px; }
 .wall-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .wall-confirm {
   display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
@@ -492,7 +525,6 @@ textarea.text-input {
 }
 .wall-note { color: var(--text-dim); font-size: 12px; margin-top: 10px; font-family: var(--mono); }
 .wall-note a { color: var(--accent-text); }
-#wall-summary { display: none; }
 
 /* Outpost progress: each step a chip, the current one filled in ink. */
 .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

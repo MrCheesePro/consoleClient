@@ -521,7 +521,6 @@ function renderLeaderboard() {
 // Keep the "updated Xm ago" text fresh without a re-fetch.
 setInterval(() => {
   if (leaderboard.updatedAt) $('leaderboard-updated').textContent = `updated ${formatAgo(leaderboard.updatedAt)}`;
-  renderWallSummary();
 }, 60 * 1000);
 
 // ===== Wall bot =====
@@ -668,54 +667,12 @@ function renderTiles(online) {
 
 const RAID_OUTPOST_LABELS = { CLAIMED_GRACE: 'claimed (grace)', COOLDOWN: 'on cooldown', ACTIVE_CHECKING: 'LIVE' };
 
-function renderWallSummary() {
-  const parts = [`${wall.totalChecks} check${wall.totalChecks === 1 ? '' : 's'} total`];
-  parts.push(wall.lastCheckAt ? `last ${formatAgo(wall.lastCheckAt)}` : 'no checks yet');
-  if (wall.raidOutpostState && wall.raidOutpostState !== 'IDLE') {
-    parts.push('Raid Outpost ' + (RAID_OUTPOST_LABELS[wall.raidOutpostState] || wall.raidOutpostState)
-      + (wall.raidOutpostState === 'ACTIVE_CHECKING' && wall.lastRaidCheckAt
-        ? ', checked ' + formatAgo(wall.lastRaidCheckAt) : ''));
-  }
-  if (!wall.accountOnline) parts.push('no account online');
-  $('wall-summary').textContent = parts.join(' · ');
-}
-
 function renderWallBot() {
   const state = $('wall-state');
   state.textContent = wall.raidActive ? 'WEEWOO' : (wall.active ? 'running' : 'off');
   state.className = 'wall-state' + (wall.raidActive ? ' raid' : (wall.active ? ' on' : ''));
 
-  renderWallSummary();
   renderRail();
-
-  const list = $('wall-list');
-  list.innerHTML = '';
-  if (!wall.top.length) {
-    const empty = document.createElement('div');
-    empty.className = 'leaderboard-empty';
-    empty.textContent = 'No checks recorded yet.';
-    list.appendChild(empty);
-  } else {
-    wall.top.forEach((entry, i) => {
-      const row = document.createElement('div');
-      row.className = 'leaderboard-row';
-
-      const rank = document.createElement('span');
-      rank.className = 'leaderboard-rank';
-      rank.textContent = `${i + 1}.`;
-
-      const name = document.createElement('span');
-      name.className = 'leaderboard-name';
-      name.textContent = entry.display_name || entry.player;
-
-      const checks = document.createElement('span');
-      checks.className = 'leaderboard-points';
-      checks.textContent = entry.checks;
-
-      row.append(rank, name, checks);
-      list.appendChild(row);
-    });
-  }
 
   renderRoster();
 }

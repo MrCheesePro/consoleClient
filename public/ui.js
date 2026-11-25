@@ -6,6 +6,20 @@
 const $ = (id) => document.getElementById(id);
 const text = (id) => ($(id)?.textContent || '').trim();
 
+// ---- night mode ----
+// The inline script in <head> applies the saved theme before paint; this only flips it.
+{
+  const btn = $('theme-toggle');
+  const sync = () => btn.setAttribute('aria-pressed', String(document.documentElement.dataset.theme === 'dark'));
+  sync();
+  btn.addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    if (dark) document.documentElement.dataset.theme = 'dark'; else delete document.documentElement.dataset.theme;
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch { /* storage blocked */ }
+    sync();
+  });
+}
+
 // ---- section index ----
 
 for (const index of document.querySelectorAll('[data-sections]')) {

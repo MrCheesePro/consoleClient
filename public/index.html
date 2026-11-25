@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="/styles.css" />
+  <script>try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}</script>
 </head>
 <body>
   <!-- ===== Auth gate ===== -->
@@ -49,6 +50,7 @@
           <span id="conn-text" class="conn-text">connecting</span>
         </div>
         <span id="user-email" class="sr-only"></span>
+        <label class="toggle-row theme-switch"><button id="theme-toggle" class="toggle" aria-pressed="false" aria-label="Night mode"></button><span>Night</span></label>
         <button id="logout-btn" class="link-btn">Log out</button>
       </div>
       <!-- Written by app.js on every view change; the view headers below say it in their own words. -->
@@ -234,15 +236,8 @@
                     </div>
                   </div>
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Recent checks</h4><p>Who has walked the walls, most first.</p></div>
-                    <div class="ledger-fields">
-                      <div id="wall-summary" class="muted-note"></div>
-                      <div id="wall-list" class="data-list"></div>
-                    </div>
-                  </div>
-                  <div class="ledger-row">
                     <div class="ledger-meta"><h4>Records</h4><p>Post the counts to Discord, download them, or start a new map.</p></div>
-                    <div class="ledger-fields">
+                    <div class="ledger-fields stack">
                       <div class="field">
                         <label class="field-label" for="set-wall_board_sort">Discord board order</label>
                         <select id="set-wall_board_sort" class="select-input" data-setting="wall_board_sort">
