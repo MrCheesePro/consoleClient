@@ -262,6 +262,8 @@ db.exec(`
   addColumn('tax_due_at', `tax_due_at INTEGER NOT NULL DEFAULT 0`);
   addColumn('tax_last_reminder_at', `tax_last_reminder_at INTEGER NOT NULL DEFAULT 0`);
   addColumn('tax_started_by', `tax_started_by TEXT NOT NULL DEFAULT ''`);
+  // Bans already posted to Discord (JSON array of parseBans rows); '' = never synced, seed quietly.
+  addColumn('posted_bans', `posted_bans TEXT NOT NULL DEFAULT ''`);
 }
 
 // Tax tags live on the roster row, so a rename (linkPlayerUuid) carries them along.
@@ -510,6 +512,10 @@ export const saveTax = db.prepare(`
   VALUES (@user_id, @tax_amount, @tax_started_at, @tax_due_at, @tax_last_reminder_at, @tax_started_by)
   ON CONFLICT(user_id) DO UPDATE SET tax_amount = @tax_amount, tax_started_at = @tax_started_at,
     tax_due_at = @tax_due_at, tax_last_reminder_at = @tax_last_reminder_at, tax_started_by = @tax_started_by
+`);
+export const setPostedBans = db.prepare(`
+  INSERT INTO wall_state (user_id, posted_bans) VALUES (?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET posted_bans = excluded.posted_bans
 `);
 export const setTaxReminderAt = db.prepare(`UPDATE wall_state SET tax_last_reminder_at = ? WHERE user_id = ?`);
 export const clearTax = db.prepare(

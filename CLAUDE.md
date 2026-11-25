@@ -193,10 +193,15 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   wall webhook (unlike every other channel): blank means reports are off, because a complaint in the
   faction-wide channel is worse than none. Posts set `allowed_mentions: { parse: [] }`.
 - **Ban feed**: any wall-bot chat line matching `SHIVA_RE` (`[SHIVA] A player was banned`) schedules
-  a fetch of `BANS_URL` (cosmicreborn.com/punishments/bans) at 15s, retrying at 60s/180s until a new
-  row shows up; `parseBans` regex-reads the table and each ban newer than `max(lastBanAt, now-10min)`
-  is posted as one embed to `ban_discord_webhook`. Blank webhook = off, no fallback. Never returns
-  early from `handleChat`. Duration shows `Permanent`, or the length plus a `<t:…:R>` countdown to the site's expiry time.
+  `_syncBans` at 15s, retrying at 60s/180s until a new row shows up; `_tick` also syncs every 10 min
+  (`BAN_POLL_MS`). The page (`BANS_URL`, cosmicreborn.com/punishments/bans) lists only the 20 newest
+  bans and **drops lifted ones**. `wall_state.posted_bans` (JSON of the last page) is the memory:
+  `diffBans` posts every unseen row oldest first, and a posted ban that vanished while an older row is
+  still shown, and isn't within 5 min of its end, is posted as unbanned (green). Expired or fell-off
+  bans are forgotten silently. `posted_bans = ''` means never synced: the backlog is recorded quietly
+  and only the last 10 min post. One embed per event to `ban_discord_webhook`. Blank webhook = off,
+  no fallback. Settings + static ban/unban previews live in the Wall Bot view's **Ban Panel** section (`data-section-panel="bans"`). Never returns early from `handleChat`. Duration shows `Permanent`, or the length plus
+  a `<t:…:R>` countdown to the site's expiry time.
 - **Find me**: a whisper matching `MATCH_RE` (`find me a goth mommy`) posts a fictional profile card to
   `match_discord_webhook` (blank = off, no fallback). **Verified only, always** (ignores
   `wall_require_verified`); unverified or `MINOR_RE` hits get no reply. Verified gets `bet that broski`.
