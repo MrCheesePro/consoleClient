@@ -211,7 +211,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `wall_state` (`tax_due_at = 0` = none). Admins whisper `tax 5m 24hr` (`Error: Ongoing Tax` if one runs),
   `pending`, `confirm|deny <name>`, `tax end`; the panel does the same over WS (`taxStart/End/Confirm/Deny`).
   The bot is an alt and **can't receive /pay**, so payment is claim + confirm: `paid` sets `tax_status`
-  `claimed` and whispers the starting admin (else all admins); only an admin sets `paid`. A new tax resets
+  `claimed` and whispers every tax admin; only an admin sets `paid`. A new tax resets
   everyone to `''`. The roster nickname (`label`, panel only, no guessing) shows **only** in
   the `pending` list, packed to the 100-char `/msg` limit (splits only when it must); every other
   message, post and log uses the IGN. `confirm`/`deny` accept either. `PATCH /api/wall/players`

@@ -1338,10 +1338,8 @@ export default class WallBot {
       const shown = this._shown(userId, me);
       this._taxLog(userId, settings, `${shown} is waiting on confirmation`);
       this._console(userId, `${shown} says they paid tax; waiting on confirmation.`);
-      // The starter hears about it if they're still an admin; otherwise every tax admin does.
-      const admins = listWallPlayers.all(userId).filter((r) => r.tax_admin);
-      const starter = admins.find((r) => r.player === tax.tax_started_by);
-      for (const a of starter ? [starter] : admins) {
+      // Every tax admin hears about it, so a claim never waits on one offline admin.
+      for (const a of listWallPlayers.all(userId).filter((r) => r.tax_admin)) {
         this._whisper(userId, a.player, `${shown} paid? confirm ${shown} / deny ${shown}`);
       }
       this.broadcast(userId);
