@@ -3,7 +3,7 @@ import {
   getSettings, getWallState, upsertWallState, incWallCheck, incRaidCheck,
   topWallCheckers, allWallCheckers,
   listWallPlayers, getWallPlayer, upsertWallPlayer, setDisplayName, missingDisplayNames, lastWallChecker, lastRaidChecker, linkPlayerUuid,
-  setTaxStatus, resetTaxStatuses, saveTax, setTaxReminderAt, clearTax, DEFAULT_USER_ID,
+  setTaxStatus, resetTaxStatuses, saveTax, setTaxReminderAt, clearTax, setPostedBans, DEFAULT_USER_ID,
   CHECK_DEFAULT, DISCORD_REMINDER_DEFAULT, DISCORD_RAID_DEFAULT,
   RAID_OUTPOST_REMINDER_DEFAULT, DISCORD_RAID_OUTPOST_DEFAULT,
 } from '../db/db.js';
@@ -57,6 +57,8 @@ export const RAID_OUTPOST_STARTED_RE = /A RAID OUTPOST HAS STARTED!/i;
 export const SHIVA_RE = /\[SHIVA\]\s*A player was banned/i;
 export const BANS_URL = 'https://cosmicreborn.com/punishments/bans';
 const BAN_FETCH_DELAYS_MS = [15 * 1000, 60 * 1000, 180 * 1000]; // the site can lag the chat line
+const BAN_POLL_MS = 10 * 60 * 1000; // also re-read the page this often, so unbans show without a new ban
+const BAN_EXPIRY_SLACK_MS = 5 * 60 * 1000; // a ban this close to its end that vanishes expired, not lifted
 const BAN_LOOKBACK_MS = 10 * 60 * 1000; // only bans this close to the Shiva line count as new
 // "find me a goth mommy" -> a fictional profile card in Discord. Never a real person: the name and
 // age are made up here, and the only picture is the requester's own Minecraft head.
@@ -641,6 +643,44 @@ export function banEmbed(b) {
   };
 }
 
+export function unbanEmbed(b, now = Date.now()) {
+  const t = (ms, style) => `<t:${Math.floor(ms / 1000)}:${style}>`;
+  return {
+    color: COLOR_OK,
+    author: {
+      name: `${b.player} was unbanned`, icon_url: HEAD_URL(b.player),
+      url: `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(b.player)}`,
+    },
+    fields: [
+      { name: 'Was', value: [b.rules.join(', '), titleCase(b.reason)].filter(Boolean).join(' — ') || 'n/a' },
+      { name: 'Duration', value: titleCase(b.duration) || 'Permanent', inline: true },
+      { name: 'Banned', value: t(b.at, 'f'), inline: true },
+      { name: 'Noticed', value: t(now, 'R'), inline: true },
+    ],
+  };
+}
+
+const banKey = (b) => `${b.player.toLowerCase()}@${b.at}`;
+
+/**
+ * Compare the bans we've posted with the page (20 newest, lifted bans removed, newest first).
+ * `fresh`: on the page, never posted (oldest first). `unbanned`: posted, gone from the page while an
+ * older row is still shown, and not at its natural end — so it was lifted. Anything else that's
+ * gone expired or fell off the bottom, and is forgotten without a post. `posted` is the page itself.
+ */
+export function diffBans(posted, page, now = Date.now()) {
+  if (!page.length) return { fresh: [], unbanned: [], posted }; // a broken fetch must not read as mass unbans
+  const onPage = new Set(page.map(banKey));
+  const seen = new Set(posted.map(banKey));
+  const oldest = Math.min(...page.map((b) => b.at));
+  return {
+    fresh: page.filter((b) => !seen.has(banKey(b))).reverse(),
+    unbanned: posted.filter((b) => !onPage.has(banKey(b)) && b.at >= oldest
+      && (!b.expiresAt || b.expiresAt > now + BAN_EXPIRY_SLACK_MS)),
+    posted: page,
+  };
+}
+
 export function formatCheckBoard(rows, sort = 'total', limit = 25) {
   if (!rows.length) return 'No checks recorded yet.';
   const { key } = BOARD_SORTS[sort] || BOARD_SORTS.total;
@@ -940,7 +980,8 @@ export default class WallBot {
       reportRequests: new Map(), // player -> [ts, ...] of report links issued this hour
       matchRequests: new Map(),  // player -> [ts, ...] of "find me" cards posted this hour
       banTimer: null,            // pending bans-page fetch after a Shiva line
-      lastBanAt: 0,              // newest ban already posted (site time, ms)
+      banBusy: false,            // a bans-page sync is in flight
+      lastBanPollAt: 0,          // last periodic bans-page sync
       queue: [],                 // pending outbound messages
       sendTimer: null,
       lastSentAt: 0,
@@ -1614,11 +1655,9 @@ export default class WallBot {
     if (!settings.ban_discord_webhook || !SHIVA_RE.test(line)) return;
     const state = this._stateFor(userId);
     if (state.banTimer) return; // a fetch is already queued; it will pick this ban up too
-    // ponytail: lastBanAt is in-memory, so a restart inside the lookback window can repost a ban.
-    const since = Math.max(state.lastBanAt, Date.now() - BAN_LOOKBACK_MS);
     const attempt = (i) => {
       state.banTimer = setTimeout(async () => {
-        const found = await this._postNewBans(userId, since);
+        const found = await this._syncBans(userId);
         state.banTimer = null;
         if (!found && i + 1 < BAN_FETCH_DELAYS_MS.length) attempt(i + 1);
       }, BAN_FETCH_DELAYS_MS[i]);
@@ -1626,30 +1665,48 @@ export default class WallBot {
     attempt(0);
   }
 
-  async _postNewBans(userId, since) {
+  /**
+   * Read the bans page, post every ban we haven't posted yet (oldest first) and every posted ban
+   * that has since been lifted. Returns how many new bans were posted. The first sync ever only
+   * posts the last BAN_LOOKBACK_MS and records the rest quietly, so it doesn't dump the backlog.
+   */
+  async _syncBans(userId) {
     const webhook = getSettings.get(userId)?.ban_discord_webhook;
-    if (!webhook) return true;
-    let bans;
-    try {
-      const res = await fetch(BANS_URL, {
-        // The site 404s Node fetch's default `Accept-Language: *`; a real locale gets the page.
-        headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      bans = parseBans(await res.text());
-    } catch (e) {
-      this._error(userId, `Bans page fetch failed: ${e.message}`);
-      return false;
-    }
-    const fresh = bans.filter((b) => b.at > since).reverse(); // oldest first
     const state = this._stateFor(userId);
-    for (const b of fresh) {
-      state.lastBanAt = Math.max(state.lastBanAt, b.at);
-      b.player = (await mojangName(b.player)) || b.player;
-      this._console(userId, `ban: ${b.player} (${b.duration})`);
-      await this._postDiscord(userId, webhook, '', banEmbed(b));
+    if (!webhook || state.banBusy) return 0;
+    state.banBusy = true;
+    try {
+      let page;
+      try {
+        const res = await fetch(BANS_URL, {
+          // The site 404s Node fetch's default `Accept-Language: *`; a real locale gets the page.
+          headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        page = parseBans(await res.text());
+      } catch (e) {
+        this._error(userId, `Bans page fetch failed: ${e.message}`);
+        return 0;
+      }
+      const raw = getWallState.get(userId)?.posted_bans || '';
+      const now = Date.now();
+      // Never synced: pretend everything older than the lookback was already posted.
+      const posted = raw ? JSON.parse(raw) : page.filter((b) => b.at <= now - BAN_LOOKBACK_MS);
+      const { fresh, unbanned } = diffBans(posted, page, now);
+      if (page.length) setPostedBans.run(userId, JSON.stringify(page)); // before posting: a slow post can't double up
+      for (const b of fresh) {
+        b.player = (await mojangName(b.player)) || b.player;
+        this._console(userId, `ban: ${b.player} (${b.duration})`);
+        await this._postDiscord(userId, webhook, '', banEmbed(b));
+      }
+      for (const b of unbanned) {
+        this._console(userId, `unban: ${b.player}`);
+        await this._postDiscord(userId, webhook, '', unbanEmbed(b, now));
+      }
+      return fresh.length;
+    } finally {
+      state.banBusy = false;
     }
-    return fresh.length > 0;
   }
 
   // Ownership changes go to Discord only (Raid Outpost webhook, falling back to wall) — the server
@@ -1843,6 +1900,10 @@ export default class WallBot {
   _tick() {
     for (const [userId, state] of this.users) {
       this._taxTick(userId);
+      if (Date.now() - state.lastBanPollAt >= BAN_POLL_MS && !state.banTimer) {
+        state.lastBanPollAt = Date.now();
+        this._syncBans(userId);
+      }
       if (!state.wallActive || state.raidActive) continue;
       const settings = getSettings.get(userId);
       if (!settings?.wall_enabled) continue;

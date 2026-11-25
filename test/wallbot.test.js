@@ -2028,3 +2028,24 @@ test('tax: pending lists nicknames packed into one message; everything else uses
     db.clearTax.run(USER);
   }
 });
+
+test('diffBans: new rows, lifted bans, and expired/fell-off bans', async () => {
+  const { diffBans, unbanEmbed } = await import('../server/bots/WallBot.js');
+  const now = Date.parse('2026-11-24T12:00:00Z');
+  const ban = (player, at, expiresAt = 0) => ({ player, at, expiresAt, rules: ['2.1.a'], reason: '(Shiva)', duration: expiresAt ? '1 day' : 'Permanent' });
+  const H = 3600e3;
+  const posted = [
+    ban('Old', now - 9 * H, now + 9 * H),     // still on the page
+    ban('Lifted', now - 6 * H, now + 20 * H), // gone, older row still shown: unbanned
+    ban('Perm', now - 5 * H),                 // permanent, gone: unbanned
+    ban('Ended', now - 7 * H, now - H),       // gone, past its end: expired, no post
+    ban('Gone', now - 99 * H, now + 99 * H),  // older than the page: fell off, no post
+  ];
+  const page = [ban('New2', now - 1000), ban('new1', now - 2000), ban('OLD', now - 9 * H, now + 9 * H)];
+  const { fresh, unbanned, posted: next } = diffBans(posted, page, now);
+  assert.deepEqual(fresh.map((b) => b.player), ['new1', 'New2']); // oldest first; case-insensitive match on Old
+  assert.deepEqual(unbanned.map((b) => b.player), ['Lifted', 'Perm']);
+  assert.equal(next, page);
+  assert.deepEqual(diffBans(posted, [], now).unbanned, []); // empty fetch is never mass unbans
+  assert.match(unbanEmbed(unbanned[0], now).author.name, /Lifted was unbanned/);
+});

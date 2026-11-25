@@ -203,6 +203,7 @@
               <button class="ix" data-section="discord" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Discord</span><span class="hint-sm">where news goes</span></span></button>
               <button class="ix" data-section="players" aria-pressed="false"><span class="n" aria-hidden="true">六</span><span class="ix-text"><span class="lbl">Players</span><span class="hint-sm">who may check</span></span></button>
               <button class="ix" data-section="tax" aria-pressed="false"><span class="n" aria-hidden="true">七</span><span class="ix-text"><span class="lbl">Tax</span><span class="hint-sm">who owes</span></span></button>
+              <button class="ix" data-section="bans" aria-pressed="false"><span class="n" aria-hidden="true">八</span><span class="ix-text"><span class="lbl">Ban Panel</span><span class="hint-sm">bans · unbans</span></span></button>
             </nav>
 
             <div class="content">
@@ -532,10 +533,6 @@
                         <label class="field-label">Check board webhook (Post to Discord)</label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_board_discord_webhook" />
                       </div>
-                      <div class="field span-full">
-                        <label class="field-label">Ban feed webhook <span class="label-sub">Posts bans from the site when Shiva announces one. Blank = off.</span></label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
-                      </div>
                     </div>
                   </div>
                   <div class="ledger-row">
@@ -713,6 +710,63 @@
                       <div class="field span-full">
                         <label class="field-label">Tax log webhook (#tax) <span class="label-sub">Waiting on confirmation / accepted / denied. Blank = tax announcements webhook.</span></label>
                         <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="tax_log_discord_webhook" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 八 Ban Panel -->
+              <section class="section" data-section-panel="bans" hidden>
+                <div class="section-head">
+                  <div>
+                    <h3 class="section-title">Ban Panel</h3>
+                    <p class="section-desc">Mirror the server's ban list into Discord, including bans that get lifted.</p>
+                  </div>
+                  <details class="howto">
+                    <summary>How this works</summary>
+                    <p class="hint">When Shiva announces a ban in chat, and every 10 minutes anyway, the bot reads
+                      <code>cosmicreborn.com/punishments/bans</code> and posts every ban it hasn't posted yet, oldest first.
+                      If a ban it posted disappears from the list before its end time, it was lifted, so the bot posts an unban.
+                      Expired bans post nothing: the ban post's countdown already says "Ended … ago". The site only shows the
+                      20 newest bans, so a ban that scrolls off before the bot looks is never seen.</p>
+                  </details>
+                </div>
+                <div class="ledger">
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Discord</h4><p>Blank turns the ban feed off. It does not fall back to the wall webhook.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label">Ban feed webhook</label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="ban_discord_webhook" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row wide-ledger">
+                    <div class="ledger-meta"><h4>On Discord</h4><p>What each post looks like, with sample values. Times count down live in Discord.</p></div>
+                    <div class="discord-preview" aria-label="Discord ban post examples">
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">Ban</span><span class="dp-where">ban feed · new row on the site</span></div>
+                        <div class="dp-embed">
+                          <div class="dp-author"><span class="dp-avatar"></span>Steve was banned</div>
+                          <div class="dp-fields">
+                            <div class="dp-field wide"><div class="dp-field-k">Reason</div><div>3.1 — Cheating</div></div>
+                            <div class="dp-field"><div class="dp-field-k">Duration</div><div>7 Days · Ends <span class="dp-time">in 7 days</span></div></div>
+                            <div class="dp-field"><div class="dp-field-k">Banned</div><div><span class="dp-time">November 24, 2026 9:14 PM</span></div></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="dp-item">
+                        <div class="dp-caption"><span class="dp-name">Unban</span><span class="dp-where">ban feed · a posted ban vanished before its end</span></div>
+                        <div class="dp-embed tax-embed">
+                          <div class="dp-author"><span class="dp-avatar"></span>Steve was unbanned</div>
+                          <div class="dp-fields">
+                            <div class="dp-field wide"><div class="dp-field-k">Was</div><div>3.1 — Cheating</div></div>
+                            <div class="dp-field"><div class="dp-field-k">Duration</div><div>7 Days</div></div>
+                            <div class="dp-field"><div class="dp-field-k">Banned</div><div><span class="dp-time">November 24, 2026 9:14 PM</span></div></div>
+                            <div class="dp-field"><div class="dp-field-k">Noticed</div><div><span class="dp-time">2 minutes ago</span></div></div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
