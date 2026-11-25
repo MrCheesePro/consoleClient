@@ -197,13 +197,11 @@
           <div class="split">
             <nav class="index" aria-label="Wall bot sections" data-sections="wall">
               <button class="ix" data-section="overview" aria-pressed="true"><span class="n" aria-hidden="true">一</span><span class="ix-text"><span class="lbl">Overview</span><span class="hint-sm">today at a glance</span></span></button>
-              <button class="ix" data-section="walls" aria-pressed="false"><span class="n" aria-hidden="true">二</span><span class="ix-text"><span class="lbl">Walls</span><span class="hint-sm">rhythm and wording</span></span></button>
-              <button class="ix" data-section="outpost" aria-pressed="false"><span class="n" aria-hidden="true">三</span><span class="ix-text"><span class="lbl">Raid Outpost</span><span class="hint-sm">claimed · cooldown · live</span></span></button>
-              <button class="ix" data-section="weewoo" aria-pressed="false"><span class="n" aria-hidden="true">四</span><span class="ix-text"><span class="lbl">Weewoo</span><span class="hint-sm">the alarm</span></span></button>
-              <button class="ix" data-section="discord" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Discord</span><span class="hint-sm">where news goes</span></span></button>
-              <button class="ix" data-section="players" aria-pressed="false"><span class="n" aria-hidden="true">六</span><span class="ix-text"><span class="lbl">Players</span><span class="hint-sm">who may check</span></span></button>
-              <button class="ix" data-section="tax" aria-pressed="false"><span class="n" aria-hidden="true">七</span><span class="ix-text"><span class="lbl">Tax</span><span class="hint-sm">who owes</span></span></button>
-              <button class="ix" data-section="bans" aria-pressed="false"><span class="n" aria-hidden="true">八</span><span class="ix-text"><span class="lbl">Ban Panel</span><span class="hint-sm">bans · unbans</span></span></button>
+              <button class="ix" data-section="walls" aria-pressed="false"><span class="n" aria-hidden="true">二</span><span class="ix-text"><span class="lbl">Walls</span><span class="hint-sm">walls · raid outpost</span></span></button>
+              <button class="ix" data-section="weewoo" aria-pressed="false"><span class="n" aria-hidden="true">三</span><span class="ix-text"><span class="lbl">Weewoo</span><span class="hint-sm">the alarm</span></span></button>
+              <button class="ix" data-section="players" aria-pressed="false"><span class="n" aria-hidden="true">四</span><span class="ix-text"><span class="lbl">Players</span><span class="hint-sm">who may check</span></span></button>
+              <button class="ix" data-section="tax" aria-pressed="false"><span class="n" aria-hidden="true">五</span><span class="ix-text"><span class="lbl">Tax</span><span class="hint-sm">who owes</span></span></button>
+              <button class="ix" data-section="bans" aria-pressed="false"><span class="n" aria-hidden="true">六</span><span class="ix-text"><span class="lbl">Ban Panel</span><span class="hint-sm">bans · unbans</span></span></button>
             </nav>
 
             <div class="content">
@@ -227,6 +225,15 @@
                     </div>
                   </div>
                   <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Role ping</h4><p>The Discord role pinged on weewoo alerts and Raid Outpost claimed/lost, when those toggles are on.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label" for="set-discord_ping_role">Role ID <span class="label-sub">Server Settings → Roles → ⋯ → Copy Role ID</span></label>
+                        <input id="set-discord_ping_role" class="text-input" placeholder="123456789012345678" inputmode="numeric" autocomplete="off" data-setting="discord_ping_role" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ledger-row">
                     <div class="ledger-meta"><h4>Recent checks</h4><p>Who has walked the walls, most first.</p></div>
                     <div class="ledger-fields">
                       <div id="wall-summary" class="muted-note"></div>
@@ -243,6 +250,10 @@
                           <option value="walls">Most wall checks</option>
                           <option value="raid">Most raid checks</option>
                         </select>
+                      </div>
+                      <div class="field">
+                        <label class="field-label">Check board webhook <span class="label-sub">Blank = logs webhook, else wall webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_board_discord_webhook" />
                       </div>
                       <div class="wall-actions">
                         <button id="wall-board-post" class="btn btn-pill">Post to Discord</button>
@@ -262,12 +273,12 @@
                 </div>
               </section>
 
-              <!-- 二 Walls -->
+              <!-- 二 Walls (walls on top, Raid Outpost below) -->
               <section class="section" data-section-panel="walls" hidden>
                 <div class="section-head">
                   <div>
                     <h3 class="section-title">Walls</h3>
-                    <p class="section-desc">How often the bot asks, and what it says.</p>
+                    <p class="section-desc">Wall reminders on top, the Raid Outpost below.</p>
                   </div>
                   <details class="howto">
                     <summary>How this works</summary>
@@ -292,8 +303,29 @@
                     <p class="hint">Quiet hours use <strong>the panel server's clock</strong>, not
                       yours. A VPS usually runs on UTC — set <code>TZ=America/New_York</code> (or your
                       zone) in <code>.env</code> and restart to make these times local.</p>
+                    <p class="hint"><strong>Reminder embed body</strong> — Discord posts arrive as an
+                      embed with a coloured bar, a title and a timestamp. This field is the body of the
+                      reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
+                      than the in-game line.</p>
+                    <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
+                      posts a log embed: the player's head and name, when the walls were confirmed
+                      clear, how long since the previous check, and their Raid Outpost/wall check
+                      counts. Left off, these follow the wall webhook; a blank URL falls back there
+                      too. The player head is fetched by Discord from <code>mc-heads.net</code>.</p>
+                    <p class="hint"><strong>Raid Outpost</strong> — set your faction and the bot follows
+                      the server&#39;s outpost broadcasts: claimed, 1-hour cooldown, then live. While it is
+                      live, players message the bot <code>raid</code> (or <code>walls raid</code>) and the
+                      reminder covers both. <strong>Grace period</strong> turns wall checks off entirely,
+                      so only the outpost is reminded; quiet hours mute walls but the outpost prompt
+                      still goes out.</p>
+                    <p class="hint"><strong>Raid Outpost claimed/lost webhook</strong> — only the
+                      ownership news goes here: we claimed it, someone took it from us, our 12-hour hold
+                      ended. Leave it blank and that news falls back to the wall webhook. Raid Outpost
+                      reminders always go with the wall reminders.</p>
                   </details>
                 </div>
+
+                <h4 class="subhead">Walls</h4>
                 <div class="ledger">
                   <div class="ledger-row">
                     <div class="ledger-meta"><h4>Rhythm</h4><p>When a reminder goes out, and what counts as a check.</p></div>
@@ -345,26 +377,40 @@
                       </div>
                     </div>
                   </div>
-                </div>
-              </section>
-
-              <!-- 三 Raid Outpost -->
-              <section class="section" data-section-panel="outpost" hidden>
-                <div class="section-head">
-                  <div>
-                    <h3 class="section-title">Raid Outpost</h3>
-                    <p class="section-desc">Followed from the server's own announcements.</p>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Discord</h4><p>The wall webhook is the fallback every other channel uses.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="webhook-group span-full">
+                        <label class="toggle-row"><button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button><span>Send to Discord</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Wall webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
+                        </div>
+                      </div>
+                      <div class="field span-full">
+                        <label class="field-label">Reminder embed body <span class="label-sub">markdown</span></label>
+                        <textarea class="text-input reminder-box" rows="2" spellcheck="false"
+                          data-setting="wall_discord_message"
+                          placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
+                      </div>
+                      <div class="webhook-group span-full">
+                        <label class="toggle-row"><button class="toggle" data-setting="check_to_discord" aria-pressed="false"></button><span>Checks to a logs channel</span></label>
+                        <div class="field webhook-field">
+                          <label class="field-label">Logs webhook URL</label>
+                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_discord_webhook" />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <details class="howto">
-                    <summary>How this works</summary>
-                    <p class="hint"><strong>Raid Outpost</strong> — set your faction and the bot follows
-                      the server&#39;s outpost broadcasts: claimed, 1-hour cooldown, then live. While it is
-                      live, players message the bot <code>raid</code> (or <code>walls raid</code>) and the
-                      reminder covers both. <strong>Grace period</strong> turns wall checks off entirely,
-                      so only the outpost is reminded; quiet hours mute walls but the outpost prompt
-                      still goes out.</p>
-                  </details>
+                  <div class="ledger-row wide-ledger">
+                    <details class="howto preview-drop">
+                      <summary>Discord preview</summary>
+                      <div id="wall-preview" class="discord-preview" aria-label="Discord wall post preview"></div>
+                    </details>
+                  </div>
                 </div>
+
+                <h4 class="subhead">Raid Outpost</h4>
                 <div class="ledger">
                   <div class="ledger-row">
                     <div class="ledger-meta"><h4>Where it stands</h4><p>Updates as the server announces each step. Click one to set it yourself.</p></div>
@@ -401,10 +447,26 @@
                       </div>
                     </div>
                   </div>
+                  <div class="ledger-row">
+                    <div class="ledger-meta"><h4>Discord</h4><p>Claimed/lost news. Reminders go with the wall reminders above.</p></div>
+                    <div class="ledger-fields form-grid">
+                      <div class="field span-full">
+                        <label class="field-label">Raid Outpost claimed/lost webhook <span class="label-sub">Blank = wall webhook.</span></label>
+                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
+                      </div>
+                      <label class="toggle-row span-full"><button class="toggle" data-setting="ping_raid_outpost" aria-pressed="false"></button><span>Ping on claimed/lost <span class="label-sub">role is set in Overview</span></span></label>
+                    </div>
+                  </div>
+                  <div class="ledger-row wide-ledger">
+                    <details class="howto preview-drop">
+                      <summary>Discord preview</summary>
+                      <div id="outpost-preview" class="discord-preview" aria-label="Discord Raid Outpost post preview"></div>
+                    </details>
+                  </div>
                 </div>
               </section>
 
-              <!-- 四 Weewoo -->
+              <!-- 三 Weewoo -->
               <section class="section" data-section-panel="weewoo" hidden>
                 <div class="section-head">
                   <div>
@@ -420,6 +482,14 @@
                       and resume when it's turned off. The Discord alert repeats on the interval below
                       with a TNT icon, the raid headline, and a running <em>time since alert</em>;
                       clearing it posts how long the alert lasted.</p>
+                    <p class="hint"><strong>Weewoo webhook</strong> — off, weewoo alerts follow the wall
+                      webhook. On with a URL set, they go to that channel instead, so alarms can live
+                      somewhere noisier than routine wall checks. A blank URL falls back to the wall
+                      webhook rather than going nowhere.</p>
+                    <p class="hint"><strong>Role ping</strong> — embeds can't ping, so the mention is
+                      sent as a line above the embed, limited to that one role. A weewoo alert pings
+                      on its first post only, not on every repeat. For the ping to land, the role must
+                      be mentionable (or the webhook allowed to mention it) in Discord.</p>
                   </details>
                 </div>
                 <div class="ledger">
@@ -454,108 +524,29 @@
                       </div>
                     </div>
                   </div>
-                </div>
-              </section>
-
-              <!-- 五 Discord -->
-              <section class="section" data-section-panel="discord" hidden>
-                <div class="section-head">
-                  <div>
-                    <h3 class="section-title">Discord</h3>
-                    <p class="section-desc">Webhooks for reminders, check logs and alarms.</p>
-                  </div>
-                  <details class="howto">
-                    <summary>How this works</summary>
-                    <p class="hint"><strong>Reminder embed body</strong> — Discord posts arrive as an
-                      embed with a coloured bar, a title and a timestamp. This field is the body of the
-                      reminder embed and supports markdown (<code>**bold**</code>), so it can be richer
-                      than the in-game line. Weewoo alerts use their own Weewoo Discord body.</p>
-                    <p class="hint"><strong>Checks to a logs channel</strong> — every recorded check
-                      posts a log embed: the player's head and name, when the walls were confirmed
-                      clear, how long since the previous check, and their Raid Outpost/wall check
-                      counts. Left off, these follow the wall webhook; a blank URL falls back there
-                      too. The player head is fetched by Discord from <code>mc-heads.net</code>.</p>
-                    <p class="hint"><strong>Weewoo webhook</strong> — off, weewoo alerts follow the wall
-                      webhook. On with a URL set, they go to that channel instead, so alarms can live
-                      somewhere noisier than routine wall checks. A blank URL falls back to the wall
-                      webhook rather than going nowhere.</p>
-                    <p class="hint"><strong>Raid Outpost claimed/lost webhook</strong> — only the
-                      ownership news goes here: we claimed it, someone took it from us, our 12-hour hold
-                      ended. Leave it blank and that news falls back to the wall webhook. Raid Outpost
-                      reminders always go with the wall reminders.</p>
-                    <p class="hint"><strong>Role ping</strong> — embeds can't ping, so the mention is
-                      sent as a line above the embed, limited to that one role. A weewoo alert pings
-                      on its first post only, not on every repeat. For the ping to land, the role must
-                      be mentionable (or the webhook allowed to mention it) in Discord.</p>
-                  </details>
-                </div>
-                <div class="ledger">
                   <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Wall reminders</h4><p>Posted as an embed with a coloured bar and a timestamp.</p></div>
+                    <div class="ledger-meta"><h4>Discord</h4><p>Left off, alarms follow the wall webhook. The ping role is set in Overview.</p></div>
                     <div class="ledger-fields form-grid">
                       <div class="webhook-group span-full">
-                        <label class="toggle-row"><button class="toggle" data-setting="wall_to_discord" aria-pressed="false"></button><span>Send to Discord</span></label>
-                        <div class="field webhook-field">
-                          <label class="field-label">Wall webhook URL</label>
-                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="wall_discord_webhook" />
-                        </div>
-                      </div>
-                      <div class="field span-full">
-                        <label class="field-label">Reminder embed body <span class="label-sub">markdown</span></label>
-                        <textarea class="text-input reminder-box" rows="2" spellcheck="false"
-                          data-setting="wall_discord_message"
-                          placeholder="Minutes Unchecked: **{minutes}**&#10;Last Checker: **{player}** (Total Checks: {checks})"></textarea>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Other channels</h4><p>Left off, these follow the wall webhook above.</p></div>
-                    <div class="ledger-fields form-grid">
-                      <div class="webhook-group">
-                        <label class="toggle-row"><button class="toggle" data-setting="check_to_discord" aria-pressed="false"></button><span>Checks to a logs channel</span></label>
-                        <div class="field webhook-field">
-                          <label class="field-label">Logs webhook URL</label>
-                          <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_discord_webhook" />
-                        </div>
-                      </div>
-                      <div class="webhook-group">
                         <label class="toggle-row"><button class="toggle" data-setting="raid_to_discord" aria-pressed="false"></button><span>Weewoo to its own Discord</span></label>
                         <div class="field webhook-field">
                           <label class="field-label">Weewoo webhook URL</label>
                           <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_discord_webhook" />
                         </div>
                       </div>
-                      <div class="field span-full">
-                        <label class="field-label">Raid Outpost claimed/lost webhook</label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="raid_outpost_discord_webhook" />
-                      </div>
-                      <div class="field span-full">
-                        <label class="field-label">Check board webhook (Post to Discord)</label>
-                        <input class="text-input" type="url" placeholder="https://discord.com/api/webhooks/..." data-setting="check_board_discord_webhook" />
-                      </div>
-                    </div>
-                  </div>
-                  <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Role ping</h4><p>Mention a Discord role so its members get notified.</p></div>
-                    <div class="ledger-fields form-grid">
-                      <div class="field span-full">
-                        <label class="field-label" for="set-discord_ping_role">Role ID <span class="label-sub">Server Settings → Roles → ⋯ → Copy Role ID</span></label>
-                        <input id="set-discord_ping_role" class="text-input" placeholder="123456789012345678" inputmode="numeric" autocomplete="off" data-setting="discord_ping_role" />
-                      </div>
                       <label class="toggle-row"><button class="toggle" data-setting="ping_weewoo" aria-pressed="false"></button><span>Ping on weewoo alerts</span></label>
-                      <label class="toggle-row"><button class="toggle" data-setting="ping_raid_outpost" aria-pressed="false"></button><span>Ping on Raid Outpost claimed/lost</span></label>
                     </div>
                   </div>
-                  <div class="ledger-row">
-                    <div class="ledger-meta"><h4>Preview</h4><p>How these posts look in Discord, with sample values and your current wording.</p></div>
-                    <div class="ledger-fields">
-                      <div id="discord-preview" class="discord-preview" aria-label="Discord embed preview"></div>
-                    </div>
+                  <div class="ledger-row wide-ledger">
+                    <details class="howto preview-drop">
+                      <summary>Discord preview</summary>
+                      <div id="weewoo-preview" class="discord-preview" aria-label="Discord weewoo post preview"></div>
+                    </details>
                   </div>
                 </div>
               </section>
 
-              <!-- 六 Players -->
+              <!-- 四 Players -->
               <section class="section" data-section-panel="players" hidden>
                 <div class="section-head">
                   <div>
@@ -597,7 +588,7 @@
                 </div>
               </section>
 
-              <!-- 七 Tax -->
+              <!-- 五 Tax -->
               <section class="section" data-section-panel="tax" hidden>
                 <div class="section-head">
                   <div>
@@ -656,6 +647,8 @@
                   </div>
                   <div class="ledger-row wide-ledger">
                     <div class="ledger-meta"><h4>On Discord</h4><p>What each post looks like. Pings only reach players with a Discord ID; anyone without one is listed under <b>No Discord linked</b>.</p></div>
+                    <details class="howto preview-drop">
+                    <summary>Discord preview</summary>
                     <div class="discord-preview tax-preview" aria-label="Discord tax post examples">
                       <div class="dp-item">
                         <div class="dp-caption"><span class="dp-name">Tax start</span><span class="dp-where">announcements · pings everyone taxed</span></div>
@@ -699,6 +692,7 @@
                         <pre class="dp-codeblock">UncleWolff's payment denied by zGhostx</pre>
                       </div>
                     </div>
+                    </details>
                   </div>
                   <div class="ledger-row">
                     <div class="ledger-meta"><h4>Discord</h4><p>Where tax announcements and the payment log go.</p></div>
@@ -716,7 +710,7 @@
                 </div>
               </section>
 
-              <!-- 八 Ban Panel -->
+              <!-- 六 Ban Panel -->
               <section class="section" data-section-panel="bans" hidden>
                 <div class="section-head">
                   <div>
@@ -744,6 +738,8 @@
                   </div>
                   <div class="ledger-row wide-ledger">
                     <div class="ledger-meta"><h4>On Discord</h4><p>What each post looks like, with sample values. Times count down live in Discord.</p></div>
+                    <details class="howto preview-drop">
+                    <summary>Discord preview</summary>
                     <div class="discord-preview" aria-label="Discord ban post examples">
                       <div class="dp-item">
                         <div class="dp-caption"><span class="dp-name">Ban</span><span class="dp-where">ban feed · new row on the site</span></div>
@@ -769,6 +765,7 @@
                         </div>
                       </div>
                     </div>
+                    </details>
                   </div>
                 </div>
               </section>
@@ -826,7 +823,10 @@
             <div class="ledger-row">
               <div class="ledger-meta"><h4>Preview</h4><p>How a ticket looks in Discord, with sample text.</p></div>
               <div class="ledger-fields">
-                <div id="report-preview" class="discord-preview" aria-label="Discord report preview"></div>
+                <details class="howto preview-drop">
+                  <summary>Discord preview</summary>
+                  <div id="report-preview" class="discord-preview" aria-label="Discord report preview"></div>
+                </details>
               </div>
             </div>
             <div class="ledger-row">
@@ -853,6 +853,8 @@
             </div>
             <div class="ledger-row">
               <div class="ledger-meta"><h4>Preview</h4><p>A sample card the way Discord shows it. Nothing is posted.</p></div>
+              <details class="howto preview-drop">
+              <summary>Discord preview</summary>
               <div class="ledger-fields form-grid">
                 <div class="field span-full">
                   <label class="field-label" for="match-preview-q">find me a …</label>
@@ -861,6 +863,7 @@
                 <div class="span-full"><button id="match-preview-roll" class="btn btn-pill">Roll a card</button></div>
                 <div id="match-preview" class="discord-preview span-full" aria-label="Discord match preview" aria-live="polite"></div>
               </div>
+              </details>
             </div>
           </div>
         </div>

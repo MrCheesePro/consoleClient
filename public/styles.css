@@ -283,6 +283,12 @@ details.howto[open] summary { color: var(--text); }
 details.howto[open] summary::before { transform: rotate(90deg); }
 details.howto summary:hover { color: var(--accent-text); }
 details.howto[open] { flex-basis: 100%; max-width: none; padding: 4px 0 6px; }
+/* Discord previews fold away the same way, across the whole row. */
+details.preview-drop, details.preview-drop[open] { grid-column: 1 / -1; max-width: none; padding: 0; }
+details.preview-drop > .discord-preview, details.preview-drop > .form-grid { margin-top: 10px; }
+/* Sub-heading splitting one section into stacked parts (Walls over Raid Outpost). */
+.subhead { margin: 36px 0 10px; font-family: var(--serif); font-size: 26px; font-weight: 500; }
+.subhead:first-of-type { margin-top: 18px; }
 .hint { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 8px 0 0; }
 .hint code, .label-sub code {
   font-family: var(--mono); font-size: 12px;

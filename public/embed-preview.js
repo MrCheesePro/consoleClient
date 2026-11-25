@@ -1,4 +1,4 @@
-// Discord embed preview for the Wall Bot → Discord section. Renders, with sample values, what
+// Discord embed previews for the Wall Bot's Walls, Raid Outpost and Weewoo parts. Renders, with sample values, what
 // the bot's webhook posts look like, using the templates currently in the form, and which channel
 // each would land in. Display only: it reads the settings inputs and never saves anything.
 //
@@ -160,15 +160,38 @@ function renderReport() {
 
 function render() {
   renderReport();
-  const root = document.getElementById('discord-preview');
-  if (!root) return;
+  const wallRoot = document.getElementById('wall-preview');
+  const outpostRoot = document.getElementById('outpost-preview');
+  const weewooRoot = document.getElementById('weewoo-preview');
+  if (!wallRoot) return;
   const bot = SAMPLE.bot;
   const faction = value('raid_outpost_faction') || 'TurtleGang';
   const wallBody = fill(value('wall_discord_message') || DISCORD_REMINDER_DEFAULT, SAMPLE);
   const raidBody = fill(DISCORD_RAID_OUTPOST_DEFAULT, SAMPLE);
   const grace = on('grace_period');
-  root.replaceChildren(
-    // The three reminder shapes from WallBot#_tick. Only one goes out per reminder.
+  // Check logs, from WallBot#_countCheck. One per check; "walls raid" sends both.
+  const checkLog = ([kind, label, who, since]) => embed({
+    name: kind === 'raid' ? 'Check log: Raid Outpost check' : 'Check log: wall check',
+    channel: 'check', color: kind === 'raid' ? COLORS.raidLog : COLORS.log, author: `${who} recorded a ${label}.`,
+    fields: [
+      { name: 'Clear at', value: '`2026/10/20 10:00:00`', inline: false },
+      { name: 'Time since last check', value: `\`${since}\``, inline: true },
+      { name: 'Raid Checks', value: `\`${SAMPLE.raidChecks}\``, inline: true },
+      { name: 'Wall Checks', value: `\`${SAMPLE.checks}\``, inline: true },
+    ],
+    footer: bot,
+  });
+  // The three reminder shapes from WallBot#_tick. Only one goes out per reminder.
+  wallRoot.replaceChildren(
+    embed({
+      name: 'Wall reminder', channel: 'wall', color: COLORS.alert,
+      when: "When the Raid Outpost isn't live.",
+      title: 'Wall Check Alert!', description: wallBody,
+      chat: fill(value('wall_reminder_message') || REMINDER_DEFAULT, SAMPLE),
+    }),
+    checkLog(['wall', 'WALL CHECK', SAMPLE.player, '12m 4s']),
+  );
+  outpostRoot.replaceChildren(
     embed({
       name: 'Walls + Raid Outpost, bundled', channel: 'wall', color: COLORS.alert,
       when: 'While the Raid Outpost is live (outside grace period and quiet hours): one post covering both.',
@@ -176,29 +199,19 @@ function render() {
       chat: fill(`${value('raid_outpost_reminder_message') || RAID_OUTPOST_REMINDER_DEFAULT}\n${value('wall_reminder_message') || REMINDER_DEFAULT}`, SAMPLE),
     }),
     embed({
-      name: 'Wall reminder', channel: 'wall', color: COLORS.alert,
-      when: "When the Raid Outpost isn't live.",
-      title: 'Wall Check Alert!', description: wallBody,
-      chat: fill(value('wall_reminder_message') || REMINDER_DEFAULT, SAMPLE),
-    }),
-    embed({
       name: 'Raid Outpost only', channel: 'wall', color: COLORS.alert,
       when: 'While the outpost is live during grace period or quiet hours: walls stay silent.',
       title: grace ? 'Raid Outpost Alert (Grace Period)!' : 'Raid Outpost Alert!', description: raidBody,
       chat: fill(value('raid_outpost_reminder_message') || RAID_OUTPOST_REMINDER_DEFAULT, SAMPLE),
     }),
-    // Check logs, from WallBot#_countCheck. One per check; "walls raid" sends both.
-    ...[['wall', 'WALL CHECK', SAMPLE.player, '12m 4s'], ['raid', 'RAID OUTPOST CHECK', SAMPLE.raidPlayer, '5m 12s']].map(([kind, label, who, since]) => embed({
-      name: kind === 'raid' ? 'Check log: Raid Outpost check' : 'Check log: wall check',
-      channel: 'check', color: kind === 'raid' ? COLORS.raidLog : COLORS.log, author: `${who} recorded a ${label}.`,
-      fields: [
-        { name: 'Clear at', value: '`2026/10/20 10:00:00`', inline: false },
-        { name: 'Time since last check', value: `\`${since}\``, inline: true },
-        { name: 'Raid Checks', value: `\`${SAMPLE.raidChecks}\``, inline: true },
-        { name: 'Wall Checks', value: `\`${SAMPLE.checks}\``, inline: true },
-      ],
-      footer: bot,
-    })),
+    checkLog(['raid', 'RAID OUTPOST CHECK', SAMPLE.raidPlayer, '5m 12s']),
+    embed({
+      name: 'Raid Outpost claimed', channel: 'raid_outpost', color: COLORS.ok,
+      ping: pingLine('ping_raid_outpost'),
+      description: `**We claimed the Raid Outpost (${faction}).**`,
+    }),
+  );
+  weewooRoot.replaceChildren(
     embed({
       name: 'Weewoo alert', channel: 'raid', color: COLORS.alert, author: 'WE ARE GETTING RAIDED!',
       ping: pingLine('ping_weewoo'),
@@ -208,11 +221,6 @@ function render() {
         { name: 'Time since alert', value: '`45s`', inline: true },
       ],
       footer: bot,
-    }),
-    embed({
-      name: 'Raid Outpost claimed', channel: 'raid_outpost', color: COLORS.ok,
-      ping: pingLine('ping_raid_outpost'),
-      description: `**We claimed the Raid Outpost (${faction}).**`,
     }),
   );
 }
