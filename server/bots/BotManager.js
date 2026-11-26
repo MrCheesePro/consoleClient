@@ -10,6 +10,7 @@ const ACCOUNTS_PER_IP = 3; // the target server's per-IP connection cap
 const LEADERBOARD_INTERVAL_MS = 60 * 60 * 1000; // refresh the board hourly
 const LEADERBOARD_CAPTURE_MS = 4000;            // window to collect the /f top reply
 const LEADERBOARD_ONLINE_DELAY_MS = 30 * 1000;  // wait after a bot connects before auto-fetch
+const ACTIVITY_MAX = 12;                         // status-rail activity entries kept per user
 const TELEMETRY_INTERVAL_MS = 5000;             // how often live bot numbers are pushed
 
 /**
@@ -80,9 +81,18 @@ export default class BotManager {
       if (msg.type === 'consoleLine') {
         msg.ts = Date.now();
         try { logChatLine(userId, msg); } catch (e) { console.error('chat log:', e.message); }
+        // Wall-bot lines also feed the status rail's activity list. Kept here, not only in each
+        // browser, so a viewer who joins or refreshes gets the recent entries too.
+        if (typeof msg.text === 'string' && msg.text.startsWith('[wall]')) {
+          const list = this._activity.get(userId) || [];
+          list.unshift({ text: msg.text.slice(6).trim(), at: msg.ts });
+          list.length = Math.min(list.length, ACTIVITY_MAX);
+          this._activity.set(userId, list);
+        }
       }
       emitToUser(userId, msg);
     };
+    this._activity = new Map();           // userId -> newest-first [{ text, at }]
     pruneChat();
     setInterval(() => pruneChat(), 60 * 60 * 1000).unref();
     this.sessions = new Map();            // key -> BotSession
@@ -119,14 +129,18 @@ export default class BotManager {
     };
   }
 
-  _broadcastOnlineCount(userId) {
+  /** `onlineCount` message, sent on every status change and to each socket as it opens. */
+  onlineCount(userId) {
     let online = 0;
     for (const [key, s] of this.sessions) {
       if (key.startsWith(`${userId}:`) && s.status === 'online') online++;
     }
-    const total = this.countForUser(userId);
-    this.emitToUser(userId, { type: 'onlineCount', online, total });
+    return { type: 'onlineCount', online, total: this.countForUser(userId) };
   }
+
+  _broadcastOnlineCount(userId) { this.emitToUser(userId, this.onlineCount(userId)); }
+
+  activitySnapshot(userId) { return this._activity.get(userId) || []; }
 
   /** Start bots for the given account ids (or all load-enabled accounts). */
   connect(userId, accountIds = null) {

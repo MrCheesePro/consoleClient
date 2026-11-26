@@ -41,6 +41,9 @@ export default class Hub {
       if (lb) ws.send(JSON.stringify({ type: 'leaderboard', entries: lb.entries, updatedAt: lb.updatedAt }));
       // Wall-bot state (active flags, totals, top checkers, roster).
       ws.send(JSON.stringify(this.botManager.wallSnapshot(userId)));
+      // Things that otherwise only arrive on a change: the online counter and the rail feed.
+      ws.send(JSON.stringify(this.botManager.onlineCount(userId)));
+      ws.send(JSON.stringify({ type: 'activity', entries: this.botManager.activitySnapshot(userId) }));
 
       ws.on('message', (raw) => this._onMessage(userId, ws, raw));
       ws.on('close', () => {

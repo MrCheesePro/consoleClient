@@ -69,6 +69,17 @@ export function createApiRouter({ botManager, emitToUser }) {
   const router = express.Router();
 
   // ---- Accounts ----
+  // Any successful account change tells every open panel to re-fetch the list, so a second
+  // viewer never acts on an account that was deleted or toggled elsewhere.
+  router.use('/accounts', (req, res, next) => {
+    if (req.method !== 'GET') {
+      res.on('finish', () => {
+        if (res.statusCode < 300) emitToUser(req.session.userId, { type: 'accountsChanged' });
+      });
+    }
+    next();
+  });
+
   router.get('/accounts', (req, res) => {
     res.json(listAccounts.all(req.session.userId).map(publicAccount));
   });
@@ -135,6 +146,8 @@ export function createApiRouter({ botManager, emitToUser }) {
     const userId = req.session.userId;
     const updated = updateSettings(userId, normalizeSettingsPatch(req.body));
     botManager.applySettings(userId);
+    // Every open panel (the saver included) gets the canonical row.
+    emitToUser(userId, { type: 'settings', settings: updated });
     res.json(updated);
   });
 

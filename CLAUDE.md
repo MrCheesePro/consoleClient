@@ -82,6 +82,11 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `BotManager`, plus one frame when a socket opens. `BotSession.telemetry()` is the only place
   that reads them off the mineflayer instance; uptime comes from `connectedAt` (stamped at the
   first spawn) rather than `statusSince`, which resets on every auto-reconnect.
+- Several people can have the panel open at once (one shared login). Anything a fresh tab
+  needs is replayed in `hub.handleUpgrade`: status, telemetry, leaderboard, `wallState`,
+  `onlineCount`, and `activity` (last 12 `[wall]` lines, buffered in `BotManager`). Saves are
+  pushed to every tab: `PUT /api/settings` emits `settings` (tabs keep their unsent edits on
+  top and never rewrite the focused field), and any non-GET `/api/accounts*` emits `accountsChanged`.
 - The client measures its own socket latency with a `ping`/`pong` pair handled in `hub.js`.
 - **Wall bot** state (`wallState`) streams over WS like `leaderboard` does — `hub.handleUpgrade`
   replays a snapshot on (re)connect. Inbound control messages: `wallStart`, `wallEnd`,
@@ -216,7 +221,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
   `wall_state` (`tax_due_at = 0` = none). Admins whisper `tax 5m 24hr` (`Error: Ongoing Tax` if one runs),
   `pending`, `unpaid` (everyone not `paid`), `confirm|deny <name>`, `tax end`; the panel does the same over WS (`taxStart/End/Confirm/Deny`).
   The bot is an alt and **can't receive /pay**, so payment is claim + confirm: `paid` sets `tax_status`
-  `claimed` and whispers every tax admin; only an admin sets `paid`. A new tax resets
+  `claimed` and whispers every tax admin; only an admin sets `paid`. Every admin is told about each claim, so `confirmTax`/`denyTax` ignore a player already `paid` (and deny needs `claimed`): otherwise each admin re-logs or flips the same payment. A new tax resets
   everyone to `''`. The roster nickname (`label`, panel only, no guessing) shows **only** in
   the `pending` list, packed to the 100-char `/msg` limit (splits only when it must); every other
   message, post and log uses the IGN. `confirm`/`deny` accept either. `PATCH /api/wall/players`

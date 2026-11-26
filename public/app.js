@@ -186,8 +186,23 @@ function handleWs(msg) {
       // Wall bot lines are already tagged "[wall]" server-side; surface those in the rail feed
       // rather than inventing a second event stream for it.
       if (typeof msg.text === 'string' && msg.text.startsWith('[wall]')) {
-        pushActivity(msg.text.slice(6).trim());
+        pushActivity(msg.text.slice(6).trim(), msg.ts);
       }
+      break;
+    case 'activity':
+      // Server's recent list, sent on every (re)connect; it replaces whatever this tab had.
+      activity.length = 0;
+      activity.push(...(msg.entries || []));
+      renderActivity();
+      break;
+    case 'settings':
+      // Someone (maybe this tab) saved. Keep this tab's unsent edits on top.
+      settings = { ...msg.settings, ...pendingPatch };
+      renderSettings();
+      updateAccountForm();
+      break;
+    case 'accountsChanged':
+      refreshAccounts();
       break;
     case 'accountAdded':
       hideMsaModal();
@@ -397,8 +412,10 @@ function renderSettings() {
     const key = el.dataset.setting;
     if (el.classList.contains('toggle')) {
       el.setAttribute('aria-pressed', settings[key] ? 'true' : 'false');
-    } else {
-      el.value = settings[key] ?? '';
+    } else if (el !== document.activeElement) {
+      // Never rewrite the field being typed in: a save echo would jump the caret.
+      const v = String(settings[key] ?? '');
+      if (el.value !== v) el.value = v;
     }
   });
 }
@@ -565,8 +582,8 @@ $('wall-reset-yes').onclick = async () => {
 const activity = [];
 const ACTIVITY_MAX = 12;
 
-function pushActivity(text) {
-  activity.unshift({ text, at: Date.now() });
+function pushActivity(text, at = Date.now()) {
+  activity.unshift({ text, at });
   while (activity.length > ACTIVITY_MAX) activity.pop();
   renderActivity();
 }
