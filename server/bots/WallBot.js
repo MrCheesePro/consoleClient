@@ -675,7 +675,9 @@ export function diffBans(posted, page, now = Date.now()) {
   const oldest = Math.min(...page.map((b) => b.at));
   return {
     fresh: page.filter((b) => !seen.has(banKey(b))).reverse(),
-    unbanned: posted.filter((b) => !onPage.has(banKey(b)) && b.at >= oldest
+    // Strictly newer than the bottom row: ban waves share one timestamp, so a same-second row
+    // pushed off the bottom is indistinguishable from a lifted one. Missing a lift there beats a false unban.
+    unbanned: posted.filter((b) => !onPage.has(banKey(b)) && b.at > oldest
       && (!b.expiresAt || b.expiresAt > now + BAN_EXPIRY_SLACK_MS)),
     posted: page,
   };

@@ -2060,4 +2060,7 @@ test('diffBans: new rows, lifted bans, and expired/fell-off bans', async () => {
   assert.equal(next, page);
   assert.deepEqual(diffBans(posted, [], now).unbanned, []); // empty fetch is never mass unbans
   assert.match(unbanEmbed(unbanned[0], now).author.name, /Lifted was unbanned/);
+  // Ban wave: three bans in one second, the page cuts off after one. The others fell off, not lifted.
+  const wave = [ban('Wave1', now - 9 * H), ban('Wave2', now - 9 * H), ban('Wave3', now - 9 * H)];
+  assert.deepEqual(diffBans(wave, [ban('Newer', now - H), wave[0]], now).unbanned, []);
 });
