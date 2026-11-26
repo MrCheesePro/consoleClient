@@ -1965,6 +1965,18 @@ test('tax: start, ongoing, paid claim, pending, confirm, reset on next tax', () 
     assert.equal(db.getWallPlayer.get(USER, 'bob').tax_status, 'paid');
     assert.match(posts.at(-1).text, /payment accepted by boss/i);
 
+    // A second admin acting on the same claim must not log it again or flip it back.
+    add('boss2', { tax_admin: 1 });
+    const logged = posts.length;
+    dm('Boss2', 'confirm bob');
+    assert.deepEqual(whispers.pop(), ['boss2', 'Bob is already confirmed.']);
+    dm('Boss2', 'deny bob');
+    assert.equal(db.getWallPlayer.get(USER, 'bob').tax_status, 'paid');
+    assert.equal(posts.length, logged, 'no duplicate tax log');
+
+    dm('Boss', 'unpaid');
+    assert.match(whispers.pop()[1], /^Unpaid \(1\): sam$/i);
+
     // Reminder pings only the unpaid.
     db.setTaxReminderAt.run(0, USER);
     wb._taxTick(USER);

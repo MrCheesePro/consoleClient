@@ -214,7 +214,7 @@ There are two *Minecraft-account* auth types (separate from panel auth), chosen 
 - **Tax**: roster players tagged `tax` (payers) / `tax_admin` (collectors), with `discord_id` for
   pings, all columns on `wall_players` so a UUID rename carries them. The running tax lives in
   `wall_state` (`tax_due_at = 0` = none). Admins whisper `tax 5m 24hr` (`Error: Ongoing Tax` if one runs),
-  `pending`, `confirm|deny <name>`, `tax end`; the panel does the same over WS (`taxStart/End/Confirm/Deny`).
+  `pending`, `unpaid` (everyone not `paid`), `confirm|deny <name>`, `tax end`; the panel does the same over WS (`taxStart/End/Confirm/Deny`).
   The bot is an alt and **can't receive /pay**, so payment is claim + confirm: `paid` sets `tax_status`
   `claimed` and whispers every tax admin; only an admin sets `paid`. A new tax resets
   everyone to `''`. The roster nickname (`label`, panel only, no guessing) shows **only** in

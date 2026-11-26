@@ -1360,7 +1360,7 @@ export default class WallBot {
 
   _handleTax(userId, settings, player, message) {
     const text = message.trim();
-    const m = /^(tax|paid|pending|confirm|deny)\b\s*(.*)$/i.exec(text);
+    const m = /^(tax|paid|pending|unpaid|confirm|deny)\b\s*(.*)$/i.exec(text);
     if (!m) return false;
     const cmd = m[1].toLowerCase();
     const args = m[2].trim().split(/\s+/).filter((w) => /\w/.test(w));
@@ -1402,16 +1402,23 @@ export default class WallBot {
       return true;
     }
 
-    if (cmd === 'pending' || (cmd === 'tax' && args[0].toLowerCase() === 'pending')) {
-      // The one place nicknames show: this list can run long. Everything else uses the IGN.
-      const waiting = this._taxPlayers(userId).filter((r) => r.tax_status === 'claimed')
+    const sub = cmd === 'tax' ? args[0].toLowerCase() : cmd;
+    if (sub === 'pending' || sub === 'unpaid') {
+      // The one place nicknames show: these lists can run long. Everything else uses the IGN.
+      // `unpaid` is everyone not confirmed yet, claimed included, so it matches the overdue list.
+      if (sub === 'unpaid' && !tax) { this._whisper(userId, player, 'No tax is running.'); return true; }
+      const waiting = this._taxPlayers(userId)
+        .filter((r) => (sub === 'pending' ? r.tax_status === 'claimed' : r.tax_status !== 'paid'))
         .map((r) => r.label || this._shown(userId, r));
-      if (!waiting.length) { this._whisper(userId, player, 'Nobody is waiting on confirmation.'); return true; }
+      if (!waiting.length) {
+        this._whisper(userId, player, sub === 'pending' ? 'Nobody is waiting on confirmation.' : 'Everyone has paid.');
+        return true;
+      }
       // Nicknames, comma-only separators, packed to the chat limit: the whole
       // `/msg <admin> ...` line must fit in 100 characters. Only a list that still overflows splits.
       const cmdLen = String(settings.wall_msg_command || '/msg').trim().length;
       const room = 100 - cmdLen - 2 - this._shown(userId, me).length;
-      const head = `Waiting (${waiting.length}):`;
+      const head = `${sub === 'pending' ? 'Waiting' : 'Unpaid'} (${waiting.length}):`;
       let line = head;
       for (const name of waiting) {
         if (line !== head && line.length + name.length + 1 > room) { this._whisper(userId, player, line); line = '+'; }
@@ -1442,6 +1449,10 @@ export default class WallBot {
     const row = this._resolveTaxTarget(userId, args[0]);
     const target = row?.player;
     if (!row?.tax) { this._whisper(userId, player, `Usage: ${cmd} <player on the tax list>`); return true; }
+    // Every admin is told about a claim, so a second admin's confirm/deny usually lands after the
+    // first one settled it. Refuse those, or each admin re-logs (or flips) the same payment.
+    if (row.tax_status === 'paid') { this._whisper(userId, player, `${this._shown(userId, row)} is already confirmed.`); return true; }
+    if (cmd === 'deny' && row.tax_status !== 'claimed') { this._whisper(userId, player, `${this._shown(userId, row)} hasn't claimed a payment.`); return true; }
     if (cmd === 'confirm') this.confirmTax(userId, target, this._shown(userId, me));
     else this.denyTax(userId, target, this._shown(userId, me));
     this._whisper(userId, player, `${cmd === 'confirm' ? 'Confirmed' : 'Denied'} ${this._shown(userId, row)}.`);
@@ -1479,7 +1490,7 @@ export default class WallBot {
 
   confirmTax(userId, player, by = 'panel') {
     const row = getWallPlayer.get(userId, normalizePlayer(player));
-    if (!row?.tax) return;
+    if (!row?.tax || row.tax_status === 'paid') return; // already settled: don't log it twice
     setTaxStatus.run('paid', userId, row.player);
     const shown = this._shown(userId, row);
     this._whisper(userId, row.player, 'Your tax payment was confirmed.');
@@ -1490,7 +1501,7 @@ export default class WallBot {
 
   denyTax(userId, player, by = 'panel') {
     const row = getWallPlayer.get(userId, normalizePlayer(player));
-    if (!row?.tax) return;
+    if (!row?.tax || row.tax_status !== 'claimed') return; // nothing to deny (or already confirmed)
     setTaxStatus.run('', userId, row.player);
     const shown = this._shown(userId, row);
     this._whisper(userId, row.player, 'Your tax payment wasn\'t confirmed. Pay and message me "paid" again.');
