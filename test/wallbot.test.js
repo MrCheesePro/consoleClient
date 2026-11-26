@@ -1846,7 +1846,7 @@ znapsoftly												</a>
   assert.deepEqual(bans[0], {
     at: Date.parse('2026-11-23T08:48:22Z'), player: 'znapsoftly', rules: ['2.1.a'],
     reason: 'Using modifications/cheats that provide an unfair advantage is prohibited. (Shiva)',
-    duration: '30 days', expiresAt: Date.parse('2026-12-23T08:48:22Z'),
+    duration: '30 days', expiresAt: Date.parse('2026-12-23T08:48:22Z'), status: '',
   });
   assert.deepEqual(bans[1].rules, ['2.1.a', '2.4.a']);
   assert.equal(bans[1].reason, 'Teaming & cheating');
@@ -2041,26 +2041,42 @@ test('tax: pending lists nicknames packed into one message; everything else uses
   }
 });
 
-test('diffBans: new rows, lifted bans, and expired/fell-off bans', async () => {
+test('diffBans: fresh rows, vanished bans to look up, expired/old bans dropped', async () => {
   const { diffBans, unbanEmbed } = await import('../server/bots/WallBot.js');
   const now = Date.parse('2026-11-24T12:00:00Z');
   const ban = (player, at, expiresAt = 0) => ({ player, at, expiresAt, rules: ['2.1.a'], reason: '(Shiva)', duration: expiresAt ? '1 day' : 'Permanent' });
   const H = 3600e3;
-  const posted = [
-    ban('Old', now - 9 * H, now + 9 * H),     // still on the page
-    ban('Lifted', now - 6 * H, now + 20 * H), // gone, older row still shown: unbanned
-    ban('Perm', now - 5 * H),                 // permanent, gone: unbanned
-    ban('Ended', now - 7 * H, now - H),       // gone, past its end: expired, no post
-    ban('Gone', now - 99 * H, now + 99 * H),  // older than the page: fell off, no post
+  const ledger = [
+    ban('Old', now - 9 * H, now + 9 * H),       // still on the page
+    { ...ban('Seen', now - 99 * H), checkedAt: now - H }, // off the page, checked recently
+    ban('Gone', now - 6 * H, now + 20 * H),     // off the page, never checked: looked up first
+    ban('Ended', now - 7 * H, now - H),         // past its end: dropped silently
+    ban('Ancient', now - 91 * 24 * H),          // older than the 90-day ledger: dropped silently
   ];
   const page = [ban('New2', now - 1000), ban('new1', now - 2000), ban('OLD', now - 9 * H, now + 9 * H)];
-  const { fresh, unbanned, posted: next } = diffBans(posted, page, now);
+  const { fresh, vanished, ledger: next } = diffBans(ledger, page, now);
   assert.deepEqual(fresh.map((b) => b.player), ['new1', 'New2']); // oldest first; case-insensitive match on Old
-  assert.deepEqual(unbanned.map((b) => b.player), ['Lifted', 'Perm']);
-  assert.equal(next, page);
-  assert.deepEqual(diffBans(posted, [], now).unbanned, []); // empty fetch is never mass unbans
-  assert.match(unbanEmbed(unbanned[0], now).author.name, /Lifted was unbanned/);
-  // Ban wave: three bans in one second, the page cuts off after one. The others fell off, not lifted.
-  const wave = [ban('Wave1', now - 9 * H), ban('Wave2', now - 9 * H), ban('Wave3', now - 9 * H)];
-  assert.deepEqual(diffBans(wave, [ban('Newer', now - H), wave[0]], now).unbanned, []);
+  assert.deepEqual(vanished.map((b) => b.player), ['Gone', 'Seen']);
+  assert.deepEqual(next.map((b) => b.player).sort(), ['Gone', 'New2', 'Old', 'Seen', 'new1']);
+  assert.match(unbanEmbed(vanished[0], now).author.name, /Gone was unbanned/);
+});
+
+test('banStatus reads a lookup page: unbanned, expired, active, re-ban, missing', async () => {
+  const { parseBans, banStatus } = await import('../server/bots/WallBot.js');
+  // Trimmed from cosmicreborn.com/punishments/lookup?search=frozenatwarp: a 30-day ban raised to
+  // Permanent keeps its own row, still active, so the re-ban must not read as an unban.
+  const row = (at, exp, tail) => `<tr><td><span data-utc="${at}">x</span></td><td><img src="h.png"> frozenatwarp </td>
+    <td><a href="/rules">2.1.a</a> Cheats </td><td> 30 days </td><td>${exp}${tail}</td></tr>`;
+  const html = `<table><tbody>
+    ${row('2026-11-26T08:18:22+00:00', '', ' Never ')}
+    ${row('2026-11-26T08:04:54+00:00', '<span data-utc="2026-12-26T08:04:54+00:00">Dec 26</span>', '<small> in 29 days </small>')}
+    ${row('2026-10-24T00:05:14+00:00', '<span data-utc="2026-11-07T00:05:14+00:00">Nov 7</span>', '<small> Unbanned <span data-utc-relative="2026-10-24T00:46:58+00:00">1 month ago</span></small>')}
+    ${row('2026-08-18T11:09:43+00:00', '<span data-utc="2026-09-17T11:09:43+00:00">Sep 17</span>', '<small> Expired <span>2 months ago</span></small>')}
+  </tbody></table>`;
+  const rows = parseBans(html);
+  const at = (iso) => ({ player: 'FrozenAtWarp', at: Date.parse(iso) });
+  assert.equal(banStatus(rows, at('2026-11-26T08:04:54Z')), 'active');
+  assert.equal(banStatus(rows, at('2026-10-24T00:05:14Z')), 'unbanned');
+  assert.equal(banStatus(rows, at('2026-08-18T11:09:43Z')), 'expired');
+  assert.equal(banStatus(rows, at('2026-01-01T00:00:00Z')), null);
 });

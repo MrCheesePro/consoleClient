@@ -58,7 +58,10 @@ export const SHIVA_RE = /\[SHIVA\]\s*A player was banned/i;
 export const BANS_URL = 'https://cosmicreborn.com/punishments/bans';
 const BAN_FETCH_DELAYS_MS = [15 * 1000, 60 * 1000, 180 * 1000]; // the site can lag the chat line
 const BAN_POLL_MS = 10 * 60 * 1000; // also re-read the page this often, so unbans show without a new ban
-const BAN_EXPIRY_SLACK_MS = 5 * 60 * 1000; // a ban this close to its end that vanishes expired, not lifted
+const BAN_LOOKUP_URL = (player) => `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(player)}`;
+const BAN_LOOKUPS_PER_SYNC = 10; // ledger bans re-checked on their lookup page per sync, longest-unchecked first
+// ponytail: ledger keeps every active ban 90 days, then forgets it; raise if old permanents' unbans matter.
+const BAN_TRACK_MS = 90 * 24 * 3600e3;
 const BAN_LOOKBACK_MS = 10 * 60 * 1000; // only bans this close to the Shiva line count as new
 // "find me a goth mommy" -> a fictional profile card in Discord. Never a real person: the name and
 // age are made up here, and the only picture is the requester's own Minecraft head.
@@ -632,7 +635,7 @@ export function banEmbed(b) {
     color: COLOR_ALERT,
     author: {
       name: `${b.player} was banned`, icon_url: HEAD_URL(b.player),
-      url: `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(b.player)}`,
+      url: BAN_LOOKUP_URL(b.player),
     },
     fields: [
       { name: 'Reason', value: [b.rules.join(', '), titleCase(b.reason)].filter(Boolean).join(' — ') || 'n/a' },
@@ -649,7 +652,7 @@ export function unbanEmbed(b, now = Date.now()) {
     color: COLOR_OK,
     author: {
       name: `${b.player} was unbanned`, icon_url: HEAD_URL(b.player),
-      url: `https://cosmicreborn.com/punishments/lookup?search=${encodeURIComponent(b.player)}`,
+      url: BAN_LOOKUP_URL(b.player),
     },
     fields: [
       { name: 'Was', value: [b.rules.join(', '), titleCase(b.reason)].filter(Boolean).join(' — ') || 'n/a' },
@@ -663,24 +666,26 @@ export function unbanEmbed(b, now = Date.now()) {
 const banKey = (b) => `${b.player.toLowerCase()}@${b.at}`;
 
 /**
- * Compare the bans we've posted with the page (20 newest, lifted bans removed, newest first).
- * `fresh`: on the page, never posted (oldest first). `unbanned`: posted, gone from the page while an
- * older row is still shown, and not at its natural end — so it was lifted. Anything else that's
- * gone expired or fell off the bottom, and is forgotten without a post. `posted` is the page itself.
+ * Merge the bans page (20 newest, newest first) into the ledger of bans we know are active.
+ * `fresh`: on the page, not in the ledger (oldest first) — post these. `vanished`: in the ledger, off
+ * the page — the page alone can't say why (lifted, pushed off the bottom, replaced by a re-ban), so
+ * these go to the player's lookup page, longest-unchecked first. Bans past their end or older than
+ * BAN_TRACK_MS leave the ledger silently.
  */
-export function diffBans(posted, page, now = Date.now()) {
-  if (!page.length) return { fresh: [], unbanned: [], posted }; // a broken fetch must not read as mass unbans
+export function diffBans(ledger, page, now = Date.now()) {
+  const known = new Set(ledger.map(banKey));
   const onPage = new Set(page.map(banKey));
-  const seen = new Set(posted.map(banKey));
-  const oldest = Math.min(...page.map((b) => b.at));
-  return {
-    fresh: page.filter((b) => !seen.has(banKey(b))).reverse(),
-    // Strictly newer than the bottom row: ban waves share one timestamp, so a same-second row
-    // pushed off the bottom is indistinguishable from a lifted one. Missing a lift there beats a false unban.
-    unbanned: posted.filter((b) => !onPage.has(banKey(b)) && b.at > oldest
-      && (!b.expiresAt || b.expiresAt > now + BAN_EXPIRY_SLACK_MS)),
-    posted: page,
-  };
+  const fresh = page.filter((b) => !known.has(banKey(b))).reverse();
+  const kept = ledger.filter((b) => (!b.expiresAt || b.expiresAt > now) && b.at > now - BAN_TRACK_MS);
+  const vanished = kept.filter((b) => !onPage.has(banKey(b)))
+    .sort((a, b) => (a.checkedAt || 0) - (b.checkedAt || 0));
+  return { fresh, vanished, ledger: [...kept, ...fresh] };
+}
+
+/** What a player's lookup page says about one ban: 'unbanned' | 'expired' | 'active', or null if it isn't listed. */
+export function banStatus(lookupRows, ban) {
+  const row = lookupRows.find((r) => banKey(r) === banKey(ban));
+  return row ? row.status || 'active' : null;
 }
 
 export function formatCheckBoard(rows, sort = 'total', limit = 25) {
@@ -759,6 +764,8 @@ export function parseBans(html) {
       reason: cellText(cells[2].replace(/<a[\s\S]*?<\/a>/gi, '')),
       duration: cellText(cells[3]),
       expiresAt: utc(cells[4]),
+      // Lookup page only: the Expires cell carries "Unbanned …" or "Expired …" once a ban has ended.
+      status: /Unbanned/i.test(cells[4]) ? 'unbanned' : /Expired/i.test(cells[4]) ? 'expired' : '',
     };
   }).filter((b) => b && b.at && /^\w{1,16}$/.test(b.player));
 }
@@ -1679,34 +1686,47 @@ export default class WallBot {
   }
 
   /**
-   * Read the bans page, post every ban we haven't posted yet (oldest first) and every posted ban
-   * that has since been lifted. Returns how many new bans were posted. The first sync ever only
-   * posts the last BAN_LOOKBACK_MS and records the rest quietly, so it doesn't dump the backlog.
+   * Read the bans page and post every ban not in the ledger yet (oldest first). Ledger bans that left
+   * the page are checked on the player's lookup page: "Unbanned" posts an unban, "Expired" drops it,
+   * still active stays tracked. Returns how many new bans were posted. The first sync ever only posts
+   * the last BAN_LOOKBACK_MS and records the rest quietly, so it doesn't dump the backlog.
    */
   async _syncBans(userId) {
     const webhook = getSettings.get(userId)?.ban_discord_webhook;
     const state = this._stateFor(userId);
     if (!webhook || state.banBusy) return 0;
     state.banBusy = true;
+    const fetchBans = async (url) => {
+      const res = await fetch(url, {
+        // The site 404s Node fetch's default `Accept-Language: *`; a real locale gets the page.
+        headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseBans(await res.text());
+    };
     try {
       let page;
       try {
-        const res = await fetch(BANS_URL, {
-          // The site 404s Node fetch's default `Accept-Language: *`; a real locale gets the page.
-          headers: { 'User-Agent': 'Mozilla/5.0 (ban feed)', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(10000),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        page = parseBans(await res.text());
+        page = await fetchBans(BANS_URL);
       } catch (e) {
         this._error(userId, `Bans page fetch failed: ${e.message}`);
         return 0;
       }
+      if (!page.length) return 0; // a broken page must not read as every ban vanishing
       const raw = getWallState.get(userId)?.posted_bans || '';
       const now = Date.now();
       // Never synced: pretend everything older than the lookback was already posted.
-      const posted = raw ? JSON.parse(raw) : page.filter((b) => b.at <= now - BAN_LOOKBACK_MS);
-      const { fresh, unbanned } = diffBans(posted, page, now);
-      if (page.length) setPostedBans.run(userId, JSON.stringify(page)); // before posting: a slow post can't double up
+      const prior = raw ? JSON.parse(raw) : page.filter((b) => b.at <= now - BAN_LOOKBACK_MS);
+      const { fresh, vanished, ledger } = diffBans(prior, page, now);
+      const unbanned = [];
+      for (const b of vanished.slice(0, BAN_LOOKUPS_PER_SYNC)) {
+        let status = null;
+        try { status = banStatus(await fetchBans(BAN_LOOKUP_URL(b.player)), b); } catch { /* retry next sync */ }
+        b.checkedAt = now;
+        if (status === 'unbanned') unbanned.push(b);
+        if (status === 'unbanned' || status === 'expired') ledger.splice(ledger.indexOf(b), 1);
+      }
+      setPostedBans.run(userId, JSON.stringify(ledger)); // before posting: a slow post can't double up
       for (const b of fresh) {
         b.player = (await mojangName(b.player)) || b.player;
         this._console(userId, `ban: ${b.player} (${b.duration})`);
